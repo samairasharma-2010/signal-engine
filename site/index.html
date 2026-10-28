@@ -1,0 +1,1208 @@
+<title>Alternative Investment Signal Engine</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,500..800&family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: a research terminal over a drifting candlestick field — sticky top bar,
+   ticker tape, then one routed view. Brass accent; green/red only ever mean direction. */
+:root{
+  --bg:#081520; --bg-2:#0c1d2a; --panel:#0f2232; --panel-2:#132a3c; --line:#1f3a4f;
+  --fg:#e4edf2; --muted:#8ea6b6; --faint:#5d7789;
+  --accent:#d9a441; --accent-ink:#1b1305; --info:#5fb2d9;
+  --up:#37c391; --down:#f0645c; --warn:#e8b04a;
+  --display:"Archivo","Arial Narrow",Arial,sans-serif;
+  --body:"IBM Plex Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;
+  --r:10px;
+  color-scheme:dark;
+}
+@media (prefers-color-scheme: light){
+  :root:not([data-theme="dark"]){
+    --bg:#e8eef2; --bg-2:#dde6ec; --panel:#f7fafb; --panel-2:#eef3f6; --line:#c5d3dc;
+    --fg:#0b1d29; --muted:#4b6575; --faint:#7b93a2;
+    --accent:#94660c; --accent-ink:#fff8ea; --info:#1f6f99;
+    --up:#0f7d55; --down:#c2332b; --warn:#9a6a08;
+    color-scheme:light;
+  }
+}
+:root[data-theme="light"]{
+  --bg:#e8eef2; --bg-2:#dde6ec; --panel:#f7fafb; --panel-2:#eef3f6; --line:#c5d3dc;
+  --fg:#0b1d29; --muted:#4b6575; --faint:#7b93a2;
+  --accent:#94660c; --accent-ink:#fff8ea; --info:#1f6f99;
+  --up:#0f7d55; --down:#c2332b; --warn:#9a6a08;
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+img{max-width:100%}
+html{padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html,body{background:var(--bg);color:var(--fg)}
+body{margin:0;font-family:var(--body);font-size:15px;line-height:1.55;min-height:100%;-webkit-font-smoothing:antialiased}
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:30;background:var(--bg-2)}
+#bg{position:fixed;inset:0;width:100%;height:100%;z-index:0;pointer-events:none}
+.shell{position:relative;z-index:1}
+.wrap{max-width:1180px;margin:0 auto;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+a{color:inherit}
+button,input,select,textarea{font:inherit;color:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.num,.mono{font-family:var(--mono);font-variant-numeric:tabular-nums}
+.up{color:var(--up)} .down{color:var(--down)} .flat{color:var(--muted)}
+
+.topbar{position:sticky;top:env(safe-area-inset-top,0px);z-index:20;background:color-mix(in srgb,var(--bg-2) 92%,transparent);backdrop-filter:blur(10px);border-bottom:1px solid var(--line)}
+.topbar .wrap{display:flex;align-items:center;gap:18px;min-height:58px;flex-wrap:wrap;padding-block:8px}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;margin-right:auto}
+.brand-mark{width:28px;height:28px;flex:none}
+.brand-name{font-family:var(--display);font-stretch:118%;font-weight:800;letter-spacing:.06em;font-size:15px;line-height:1.05;text-transform:uppercase}
+.brand-name small{display:block;font-family:var(--mono);font-weight:500;font-stretch:100%;letter-spacing:.08em;font-size:10px;color:var(--muted)}
+nav.main{display:flex;gap:2px;flex-wrap:wrap}
+nav.main a{text-decoration:none;font-size:13.5px;font-weight:500;color:var(--muted);padding:7px 11px;border-radius:7px}
+nav.main a:hover{color:var(--fg);background:var(--panel-2)}
+nav.main a[aria-current="page"]{color:var(--fg);background:var(--panel-2);box-shadow:inset 0 -2px 0 var(--accent)}
+.status{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.chip{display:inline-flex;align-items:center;gap:6px;font-family:var(--mono);font-size:11px;letter-spacing:.06em;text-transform:uppercase;padding:4px 9px;border-radius:999px;border:1px solid var(--line);color:var(--muted);white-space:nowrap;background:var(--panel);max-width:260px;overflow:hidden;text-overflow:ellipsis}
+.chip.owner{border-color:var(--accent);color:var(--accent)}
+.chip .dot{width:7px;height:7px;border-radius:50%;background:var(--faint);flex:none}
+.chip.live .dot{background:var(--up);animation:pulse 2.4s infinite}
+.chip.stale .dot{background:var(--warn)}
+.updated-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-family:var(--mono);font-size:12px;color:var(--muted);letter-spacing:.03em}
+.updated-line b{color:var(--fg);font-weight:600}
+@keyframes pulse{0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--up) 60%,transparent)}70%{box-shadow:0 0 0 7px transparent}100%{box-shadow:0 0 0 0 transparent}}
+
+.tape{border-bottom:1px solid var(--line);background:color-mix(in srgb,var(--bg) 80%,transparent);overflow:hidden}
+.tape-inner{display:flex;align-items:center;height:36px}
+.tape-label{flex:none;font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent);padding:0 14px 0 max(16px,env(safe-area-inset-left,0px));border-right:1px solid var(--line);height:100%;display:flex;align-items:center;background:var(--bg-2)}
+.tape-track{overflow:hidden;flex:1;min-width:0;mask-image:linear-gradient(90deg,transparent,#000 4%,#000 96%,transparent)}
+.tape-run{display:inline-flex;white-space:nowrap;animation:tape 70s linear infinite}
+.tape:hover .tape-run{animation-play-state:paused}
+@keyframes tape{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+.tick{display:inline-flex;gap:8px;align-items:baseline;padding:0 20px;font-family:var(--mono);font-size:12.5px;border-right:1px solid var(--line)}
+.tick b{font-weight:600;letter-spacing:.04em} .tick span{color:var(--muted)} .tick em{font-style:normal}
+
+main{padding-block:28px 64px}
+.banner{display:flex;gap:12px;align-items:flex-start;padding:12px 14px;border-radius:var(--r);border:1px solid color-mix(in srgb,var(--warn) 55%,var(--line));background:color-mix(in srgb,var(--warn) 10%,var(--panel));margin-bottom:22px;font-size:14px}
+.banner b{color:var(--warn);flex:none}
+
+.eyebrow{font-family:var(--mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--accent)}
+h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+h1{font-size:clamp(30px,5.2vw,54px);font-stretch:112%;font-weight:800;line-height:1.03;letter-spacing:-.01em}
+h2{font-size:clamp(20px,2.6vw,26px);font-stretch:108%;font-weight:700;line-height:1.15}
+h3{font-size:15.5px;font-stretch:105%;font-weight:700;letter-spacing:.01em;line-height:1.25}
+p{margin:0}
+.lede{color:var(--muted);font-size:16.5px;max-width:64ch}
+.muted{color:var(--muted)} .small{font-size:13px}
+.stack{display:flex;flex-direction:column;gap:14px}
+.section{display:flex;flex-direction:column;gap:16px;margin-top:40px}
+.section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.panel{background:color-mix(in srgb,var(--panel) 90%,transparent);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:var(--r);padding:18px}
+
+.hero{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(0,1fr);gap:28px;align-items:end}
+.kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.kpi{background:color-mix(in srgb,var(--panel) 94%,transparent);padding:14px 16px;display:flex;flex-direction:column;gap:4px;min-width:0}
+.kpi .k{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+.kpi .v{font-family:var(--mono);font-size:24px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.15}
+.kpi .s{font-size:12.5px;color:var(--muted)}
+
+.seg{display:inline-flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:var(--panel);flex-wrap:wrap}
+.seg button{border:0;background:transparent;padding:7px 12px;font-size:13px;cursor:pointer;color:var(--muted)}
+.seg button[aria-pressed="true"]{background:var(--accent);color:var(--accent-ink);font-weight:600}
+
+.board{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:12px}
+.card{display:flex;flex-direction:column;gap:10px;text-decoration:none;padding:15px 16px;border-radius:var(--r);border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 90%,transparent);backdrop-filter:blur(6px);transition:border-color .15s,transform .15s}
+.card:hover{border-color:var(--accent);transform:translateY(-1px)}
+.card-top{display:flex;justify-content:space-between;align-items:flex-start;gap:8px}
+.tkr{font-family:var(--mono);font-weight:600;font-size:15px;letter-spacing:.05em}
+.card-name{font-size:13px;color:var(--muted)}
+.big{font-family:var(--mono);font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
+.readings{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 10px;font-size:12.5px}
+.readings .num{text-align:right}
+.readings .lbl{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.spark{width:100%;height:auto;display:block}
+.legend{display:flex;gap:14px;flex-wrap:wrap;font-size:12.5px;color:var(--muted)}
+.legend i{display:inline-block;width:14px;height:3px;border-radius:2px;vertical-align:middle;margin-right:6px}
+.two{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,1fr);gap:16px;align-items:start}
+.note{display:flex;flex-direction:column;gap:4px;padding-block:12px;border-top:1px solid var(--line)}
+.note:first-child{border-top:0;padding-top:0}
+.note .meta{font-family:var(--mono);font-size:11px;color:var(--faint);letter-spacing:.05em}
+.note p{white-space:pre-wrap;font-size:14px}
+
+/* signals */
+.cat-head{display:flex;align-items:baseline;gap:10px;margin-top:8px}
+.cat-head .eyebrow{color:var(--muted)}
+.sig-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:12px}
+.sig{display:flex;flex-direction:column;gap:9px;padding:16px;border-radius:var(--r);border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 92%,transparent);backdrop-filter:blur(6px);min-width:0}
+.sig.empty-sig{background:color-mix(in srgb,var(--panel) 70%,transparent)}
+.sig-top{display:flex;justify-content:space-between;gap:8px;align-items:center;flex-wrap:wrap}
+.cat{font-family:var(--mono);font-size:10.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+.badge{font-family:var(--mono);font-size:10.5px;letter-spacing:.05em;padding:2px 7px;border-radius:5px;border:1px solid var(--line);color:var(--muted);white-space:nowrap}
+.badge.auto{color:var(--info);border-color:color-mix(in srgb,var(--info) 45%,transparent)}
+.badge.owner{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 45%,transparent)}
+.sig-why{font-size:13.5px;color:var(--muted)}
+.sig-read{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;padding-top:4px;border-top:1px dashed var(--line)}
+.sig-read .val{font-family:var(--mono);font-size:21px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+.sig-read .chg{font-family:var(--mono);font-size:12px}
+.sig-read .spark{max-width:130px}
+.sig-src{font-size:12px;color:var(--faint)}
+.sig-wait{font-size:13px;color:var(--faint);padding-top:6px;border-top:1px dashed var(--line)}
+details.add{font-size:13px}
+details.add summary{cursor:pointer;color:var(--accent);font-weight:600;list-style:none}
+details.add summary::-webkit-details-marker{display:none}
+details.add form{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
+details.add form .full{grid-column:1/-1}
+.cat-row{display:grid;grid-template-columns:minmax(0,1fr);gap:0}
+.cat-block{display:flex;flex-direction:column;gap:12px}
+.catalog .sig h3{font-size:17px}
+.dl{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 14px;font-size:13.5px}
+.dl dt{color:var(--muted);font-weight:500} .dl dd{margin:0}
+.read-guide{display:grid;grid-template-columns:1fr 1fr;gap:8px;font-size:13px}
+.read-guide div{padding:8px 10px;border-radius:8px;border:1px solid var(--line)}
+
+/* company */
+.co-head{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap}
+.co-tkr{font-family:var(--mono);font-size:13px;letter-spacing:.12em;color:var(--accent)}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px}
+.tile{padding:14px 16px;border-radius:var(--r);border:1px solid var(--line);background:color-mix(in srgb,var(--panel) 92%,transparent);display:flex;flex-direction:column;gap:4px}
+.tile .k{font-size:12.5px;color:var(--muted)}
+.tile .v{font-family:var(--mono);font-size:26px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.2}
+.tile .d{font-family:var(--mono);font-size:12px}
+.chart-box{position:relative}
+.chart-box svg{width:100%;height:auto;display:block;overflow:visible}
+.tip{position:absolute;pointer-events:none;background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12.5px;font-family:var(--mono);box-shadow:0 8px 24px rgba(0,0,0,.25);min-width:170px;z-index:5}
+.callout{border-left:3px solid var(--accent);padding:10px 14px;background:color-mix(in srgb,var(--accent) 8%,var(--panel));border-radius:0 8px 8px 0;font-size:14.5px}
+.summary-row{display:flex;gap:10px;flex-wrap:wrap}
+.summary-row .pill{font-size:12.5px}
+
+.tbl-wrap{overflow-x:auto;border:1px solid var(--line);border-radius:var(--r);background:color-mix(in srgb,var(--panel) 92%,transparent)}
+table{border-collapse:collapse;width:100%;font-size:13.5px}
+th,td{padding:9px 12px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;vertical-align:top}
+td.wrap-cell{white-space:normal;min-width:220px}
+th{font-family:var(--mono);font-size:10.5px;font-weight:500;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);background:var(--panel-2)}
+td.n,th.n{text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums}
+tr:last-child td{border-bottom:0}
+.pill{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;padding:3px 9px;border-radius:999px;border:1px solid}
+.pill.good{color:var(--up);border-color:color-mix(in srgb,var(--up) 50%,transparent);background:color-mix(in srgb,var(--up) 12%,transparent)}
+.pill.bad{color:var(--down);border-color:color-mix(in srgb,var(--down) 50%,transparent);background:color-mix(in srgb,var(--down) 12%,transparent)}
+.pill.neutral{color:var(--muted);border-color:var(--line)}
+.pill.gold{color:var(--accent);border-color:color-mix(in srgb,var(--accent) 50%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}
+.pill.info{color:var(--info);border-color:color-mix(in srgb,var(--info) 50%,transparent);background:color-mix(in srgb,var(--info) 10%,transparent)}
+.howto{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px}
+.howto .panel{display:flex;flex-direction:column;gap:6px;padding:14px 16px}
+.howto b{font-family:var(--display);font-stretch:105%;font-size:15px}
+details.adv summary{cursor:pointer;font-weight:600;color:var(--muted)}
+
+.record{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;background:var(--line);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.fc{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:6px 16px;align-items:start;padding:14px 16px;border-top:1px solid var(--line)}
+.fc:first-child{border-top:0}
+.fc .why{font-size:14px;white-space:pre-wrap}
+.fc .meta{font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.fc-side{display:flex;flex-direction:column;align-items:flex-end;gap:8px}
+.actions{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.empty{padding:22px 16px;text-align:center;color:var(--muted);font-size:14px}
+
+form.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px 14px}
+form.grid .full{grid-column:1/-1}
+label.f{display:flex;flex-direction:column;gap:5px;font-size:12.5px;color:var(--muted);font-weight:500;min-width:0}
+input[type=text],input[type=date],input[type=number],select,textarea{background:var(--bg-2);border:1px solid var(--line);border-radius:8px;padding:9px 11px;font-size:14px;width:100%;min-width:0}
+textarea{min-height:84px;resize:vertical}
+.radio-row{display:flex;gap:8px;flex-wrap:wrap}
+.radio-row label{display:inline-flex;gap:7px;align-items:center;border:1px solid var(--line);border-radius:8px;padding:8px 12px;font-size:14px;color:var(--fg);cursor:pointer;background:var(--bg-2)}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid var(--line);background:var(--panel-2);padding:8px 14px;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;text-decoration:none}
+.btn:hover{border-color:var(--accent)}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:var(--accent-ink)}
+.btn.small{padding:5px 10px;font-size:12.5px}
+.btn.danger{color:var(--down)}
+.btn:disabled{opacity:.55;cursor:not-allowed}
+.drop{border:1.5px dashed var(--line);border-radius:var(--r);padding:20px;text-align:center;display:flex;flex-direction:column;gap:10px;align-items:center}
+.drop.over{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
+.kv{display:grid;grid-template-columns:auto minmax(0,1fr);gap:6px 16px;font-size:13.5px}
+.kv dt{color:var(--muted)} .kv dd{margin:0;font-family:var(--mono);font-size:13px;overflow-wrap:anywhere}
+ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:10px;max-width:72ch}
+ol.steps li::marker{font-family:var(--mono);color:var(--accent)}
+.toast{position:fixed;right:max(16px,env(safe-area-inset-right,0px));bottom:calc(16px + env(safe-area-inset-bottom,0px));z-index:40;background:var(--bg-2);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:8px;padding:10px 14px;font-size:14px;max-width:min(420px,calc(100vw - 32px));box-shadow:0 10px 30px rgba(0,0,0,.3)}
+.toast.bad{border-left-color:var(--down)}
+.foot{border-top:1px solid var(--line);padding-block:20px;color:var(--faint);font-size:12.5px}
+.foot .wrap{display:flex;gap:16px;flex-wrap:wrap;justify-content:space-between}
+.skeleton{height:220px;border-radius:var(--r);background:linear-gradient(90deg,var(--panel) 0%,var(--panel-2) 50%,var(--panel) 100%);background-size:200% 100%;animation:sh 1.4s infinite}
+@keyframes sh{to{background-position:-200% 0}}
+.console-tabs{display:flex;gap:6px;flex-wrap:wrap}
+
+@media (max-width:860px){
+  .hero,.two{grid-template-columns:minmax(0,1fr)}
+  form.grid,.read-guide{grid-template-columns:minmax(0,1fr)}
+  .fc{grid-template-columns:minmax(0,1fr)}
+  .fc-side{align-items:flex-start}
+  .actions{justify-content:flex-start}
+}
+@media (prefers-reduced-motion:reduce){
+  .tape-run{animation:none} .tape-track{overflow-x:auto}
+  .chip.live .dot{animation:none} .card,.skeleton{transition:none;animation:none}
+}
+</style>
+
+<canvas id="bg" aria-hidden="true"></canvas>
+<div class="shell">
+  <header class="topbar">
+    <div class="wrap">
+      <a class="brand" href="#markets" aria-label="Signal Engine home">
+        <svg class="brand-mark" viewBox="0 0 28 28" aria-hidden="true">
+          <rect x="1" y="1" width="26" height="26" rx="6" fill="none" stroke="var(--accent)" stroke-width="1.5"/>
+          <line x1="8" y1="8" x2="8" y2="20" stroke="var(--fg)" stroke-width="1.2"/><rect x="6" y="11" width="4" height="6" fill="var(--fg)"/>
+          <line x1="14" y1="6" x2="14" y2="18" stroke="var(--accent)" stroke-width="1.2"/><rect x="12" y="8" width="4" height="7" fill="var(--accent)"/>
+          <line x1="20" y1="10" x2="20" y2="22" stroke="var(--fg)" stroke-width="1.2"/><rect x="18" y="13" width="4" height="6" fill="none" stroke="var(--fg)" stroke-width="1.2"/>
+        </svg>
+        <span class="brand-name">Signal Engine<small>Alternative investment research</small></span>
+      </a>
+      <nav class="main" id="nav" aria-label="Sections"></nav>
+      <div class="status" id="status"></div>
+    </div>
+  </header>
+  <div class="tape" id="tape" aria-label="Latest readings"></div>
+  <main class="wrap" id="app" tabindex="-1"><div class="skeleton" aria-label="Loading research data"></div></main>
+  <footer class="foot"><div class="wrap">
+    <span>Research project. Not investment advice. Signal readings are changes in alternative data, not stock prices.</span>
+    <span id="foot-data"></span>
+  </div></footer>
+</div>
+
+<script>
+"use strict";
+/* ============================================================ SIGNAL CATALOG
+   applies: list of company ids the signal is meaningful for (omitted = all).
+   mode: "auto" = collected by the data pipeline; "manual" = entered by the owner.
+   better: "lower" when a falling number is good news (e.g. app chart rank). */
+const CATS = ["People", "Consumer demand", "Digital engagement", "Brand & attention", "Pricing & expansion", "Innovation"];
+const SIGNALS = [
+  {id: "hiring", name: "Job openings", cat: "People", unit: "open roles", mode: "manual",
+   measures: "How many jobs the company is advertising on its careers site and LinkedIn.",
+   indicates: "Companies hire ahead of growth. Rising openings suggest management expects more demand; a sharp drop often comes before cost-cutting or a slowdown.",
+   up: "Expansion, confidence in future demand", down: "Hiring freeze, possible slowdown",
+   lead: "Tends to lead revenue by 1 to 3 quarters", free: "Count of openings on the company's careers page or LinkedIn Jobs, checked monthly", paid: "LinkUp, Revelio Labs, Thinknum"},
+  {id: "headcount", name: "Employee headcount", cat: "People", unit: "employees", mode: "manual",
+   measures: "Total number of employees listed on the company's LinkedIn page.",
+   indicates: "Shows whether the company is actually growing its workforce or shrinking it through layoffs. Headcount growing faster than revenue can squeeze profit margins.",
+   up: "Growing capacity", down: "Layoffs or restructuring",
+   lead: "Moves with or slightly ahead of revenue", free: "LinkedIn company page; yearly totals in the annual report", paid: "Revelio Labs, Aura"},
+  {id: "employee_sentiment", name: "Employee satisfaction", cat: "People", unit: "rating out of 5", mode: "manual",
+   measures: "The company's average employee rating on Glassdoor.",
+   indicates: "Unhappy staff leave and serve customers worse. A falling rating can flag management or execution problems before they reach the results.",
+   up: "Healthy culture and execution", down: "Morale or leadership problems",
+   lead: "Slow signal; read it over several quarters", free: "Glassdoor company rating, recorded monthly", paid: "Revelio Labs sentiment data"},
+  {id: "search_interest", name: "Google search interest", cat: "Consumer demand", unit: "index 0 to 100", mode: "auto",
+   measures: "How often people search for the brand or its main product (\"iPhone\" for Apple), from Google Trends.",
+   indicates: "Searching is often the first step before buying. Rising interest points to growing consumer demand; falling interest can warn of fading popularity.",
+   up: "Growing consumer interest", down: "Fading interest",
+   lead: "Moves with sales in the same quarter, sometimes slightly ahead", free: "Google Trends, collected automatically", paid: "None needed"},
+  {id: "customer_reviews", name: "Customer review score", cat: "Consumer demand", unit: "rating out of 5", mode: "manual",
+   measures: "Average customer rating on review sites such as Trustpilot, or for best-selling products on Amazon.",
+   indicates: "Satisfied customers come back and recommend the brand. A falling score often appears before repeat purchases decline.",
+   up: "Happier customers, stronger loyalty", down: "Quality or service problems",
+   lead: "Slow signal; affects loyalty over several quarters", free: "Trustpilot, Amazon product ratings", paid: "Yipit, Bazaarvoice"},
+  {id: "foot_traffic", name: "Store visits", cat: "Consumer demand", unit: "visits index", mode: "manual", applies: ["NKE", "ADS", "AAPL", "MCD", "SBUX"],
+   measures: "How many people physically visit the company's stores, estimated from anonymised phone location data.",
+   indicates: "For restaurants and retailers, visits are one of the closest signals to same-store sales.",
+   up: "More customers through the door", down: "Fewer visits, weaker sales",
+   lead: "Moves with sales in the same quarter", free: "Placer.ai publishes some free monthly reports", paid: "Placer.ai, Advan"},
+  {id: "app_rank", name: "App popularity", cat: "Digital engagement", unit: "chart rank (lower is better)", mode: "manual", better: "lower", applies: ["NKE", "ADS", "NFLX", "AMZN", "TSLA", "MCD", "SBUX"],
+   measures: "Where the company's main app ranks in the App Store and Google Play charts.",
+   indicates: "For Starbucks, McDonald's, Nike, Netflix and Amazon, the app is where many orders happen. A climbing rank means more customers using it.",
+   up: "Falling rank number: more people using the app", down: "Rising rank number: app losing users",
+   lead: "Can lead revenue by about a quarter", free: "App Store and Google Play top charts; install ranges on Google Play", paid: "Sensor Tower, Appfigures"},
+  {id: "app_rating", name: "App reviews", cat: "Digital engagement", unit: "total reviews", mode: "manual", applies: ["NKE", "ADS", "NFLX", "AMZN", "TSLA", "MCD", "SBUX"],
+   measures: "Total number of App Store reviews for the company's main app.",
+   indicates: "Review counts grow when more people use an app, so growth here is a rough measure of user growth.",
+   up: "Growing user base", down: "Slowing user growth",
+   lead: "Moves with or slightly ahead of digital sales", free: "App Store and Google Play listings", paid: "Sensor Tower, Appfigures"},
+  {id: "web_traffic", name: "Website traffic", cat: "Digital engagement", unit: "monthly visits", mode: "manual",
+   measures: "Estimated monthly visits to the company's main website.",
+   indicates: "For companies that sell online, visits are close to a direct measure of demand. Rising traffic usually means rising online sales.",
+   up: "Higher online demand", down: "Weaker online demand",
+   lead: "Moves with sales in the same quarter", free: "Similarweb's free website lookup (monthly estimate)", paid: "Similarweb Pro, Semrush"},
+  {id: "wiki_views", name: "Wikipedia readership", cat: "Brand & attention", unit: "monthly page views", mode: "auto",
+   measures: "Monthly views of the company's English Wikipedia article.",
+   indicates: "A measure of public attention. Spikes follow product launches and news, good or bad, so it shows how much the company is on people's minds.",
+   up: "More public attention", down: "Less attention",
+   lead: "Mostly moves with events rather than ahead of them", free: "Wikimedia page-view data, collected automatically", paid: "None needed"},
+  {id: "social_following", name: "Social media following", cat: "Brand & attention", unit: "followers", mode: "manual",
+   measures: "Followers across the company's main Instagram, TikTok and YouTube accounts.",
+   indicates: "Brand momentum, especially with younger customers. Fast follower growth suggests rising cultural relevance; stalling growth can mean losing ground to rivals.",
+   up: "Brand gaining momentum", down: "Brand losing relevance",
+   lead: "Slow signal; useful over several quarters", free: "Social Blade and the platforms' public counts", paid: "Brandwatch, Sprout Social"},
+  {id: "news_tone", name: "News coverage and tone", cat: "Brand & attention", unit: "average tone, −10 to +10", mode: "manual",
+   measures: "How positive or negative news articles about the company are, across global media.",
+   indicates: "Sudden negative coverage can flag recalls, lawsuits or scandals early. Persistently positive coverage often comes with strong products and results.",
+   up: "Improving reputation", down: "Reputation risk",
+   lead: "Reacts to events within days", free: "GDELT Project, a free global news database", paid: "RavenPack, Bloomberg sentiment"},
+  {id: "pricing", name: "Product prices", cat: "Pricing & expansion", unit: "price in USD", mode: "manual",
+   measures: "The price of a flagship product tracked over time, such as the base iPhone, Netflix's Standard plan, a Big Mac or a Tesla Model 3.",
+   indicates: "Pricing power. Raising prices without losing customers means strong demand; discounting or price cuts can mean demand is weakening.",
+   up: "Pricing power, strong demand", down: "Discounting, demand pressure",
+   lead: "Reaches revenue and margins within 1 to 2 quarters", free: "Company websites and price-history sites, checked monthly", paid: "DataWeave, Thinknum"},
+  {id: "expansion", name: "Stores and new markets", cat: "Pricing & expansion", unit: "locations", mode: "manual", applies: ["NKE", "ADS", "AAPL", "TSLA", "MCD", "SBUX", "AMZN"],
+   measures: "Number of stores or locations, plus new countries the company has entered.",
+   indicates: "More locations mean more capacity to sell. Entering new countries widens the market; closing stores can mean retreat or refocus.",
+   up: "Growing footprint", down: "Shrinking footprint",
+   lead: "New stores add revenue over the following 1 to 4 quarters", free: "Company reports, store locators and press releases", paid: "Placer.ai, SafeGraph"},
+  {id: "patents", name: "Patents granted", cat: "Innovation", unit: "patents per quarter", mode: "manual", applies: ["AAPL", "MSFT", "TSLA", "NKE", "AMZN"],
+   measures: "Number of US patents granted to the company.",
+   indicates: "A measure of research output. A growing patent pipeline suggests future products; it matters most for technology and car companies.",
+   up: "Strong innovation pipeline", down: "Slowing research output",
+   lead: "Very long lead: years rather than quarters", free: "USPTO PatentsView (free)", paid: "PatSnap, IFI Claims"},
+];
+const SIG = Object.fromEntries(SIGNALS.map(s => [s.id, s]));
+
+/* ==================================================================== STATE */
+const S = {
+  data: null, loadedAsset: undefined, dataError: null, lastChecked: null,
+  dataset: null, forecasts: [], notes: [], series: {}, dbCompanies: [],
+  fcReady: false, notesReady: false, seriesReady: false,
+  isOwner: false, preview: false, me: null, db: null, assets: null, live: false,
+  boardSignal: "wiki_views", coSignal: "wiki_views", scSignal: "wiki_views",
+};
+const ownerView = () => S.isOwner && !S.preview;
+const CHECK_EVERY_MS = 30 * 60 * 1000;
+
+/* ================================================================== HELPERS */
+function h(tag, props, ...kids) {
+  const el = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (v == null || v === false) continue;
+    if (k === "class") el.className = v;
+    else if (k === "text") el.textContent = v;
+    else if (k === "svg") el.innerHTML = v;       // only strings this page builds, text passed through esc()
+    else if (k.startsWith("on")) el.addEventListener(k.slice(2), v);
+    else el.setAttribute(k, v === true ? "" : v);
+  }
+  for (const kid of kids.flat(Infinity)) {
+    if (kid == null || kid === false) continue;
+    el.append(kid instanceof Node ? kid : document.createTextNode(String(kid)));
+  }
+  return el;
+}
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;"}[c]));
+const isNum = v => typeof v === "number" && isFinite(v);
+const fmtSigned = (x, d) => (x > 0 ? "+" : x < 0 ? "−" : "") + Math.abs(x).toFixed(d);
+const pctLog = v => isNum(v) ? fmtSigned((Math.exp(v) - 1) * 100, 1) + "%" : "—";
+const pctRaw = v => isNum(v) ? fmtSigned(v * 100, 1) + "%" : "—";
+const pts = v => isNum(v) ? fmtSigned(v * 100, 1) + " pts" : "—";
+const dir = v => !isNum(v) ? "flat" : v > 0 ? "up" : v < 0 ? "down" : "flat";
+const arrow = v => !isNum(v) ? "" : v > 0 ? "▲ " : v < 0 ? "▼ " : "";
+const f2 = v => isNum(v) ? fmtSigned(v, 2) : "—";
+const pct0 = v => isNum(v) ? Math.round(v * 100) + "%" : "—";
+function fmtVal(v) {
+  if (!isNum(v)) return "—";
+  const a = Math.abs(v);
+  if (a >= 1e9) return (v / 1e9).toFixed(2) + "B";
+  if (a >= 1e6) return (v / 1e6).toFixed(2) + "M";
+  if (a >= 1e4) return (v / 1e3).toFixed(1) + "K";
+  return Number.isInteger(v) ? v.toLocaleString("en-US") : v.toLocaleString("en-US", {maximumFractionDigits: 2});
+}
+function money(v, cur) {
+  if (!isNum(v)) return "—";
+  const sym = cur === "EUR" ? "€" : "$";
+  return v >= 1e9 ? sym + (v / 1e9).toFixed(2) + "B" : sym + (v / 1e6).toFixed(0) + "M";
+}
+function dateLabel(iso) {
+  if (!iso) return "—";
+  const plain = iso.length === 10;
+  const d = new Date(plain ? iso + "T00:00:00Z" : iso);
+  return isNaN(d) ? iso : d.toLocaleDateString("en-GB", {day: "numeric", month: "short", year: "numeric", timeZone: plain ? "UTC" : undefined});
+}
+const timeLabel = d => d ? d.toLocaleTimeString([], {hour: "2-digit", minute: "2-digit"}) : "—";
+let toastTimer;
+function toast(msg, bad) {
+  document.querySelector(".toast")?.remove();
+  const t = h("div", {class: "toast" + (bad ? " bad" : ""), role: "status"}, msg);
+  document.body.append(t);
+  clearTimeout(toastTimer); toastTimer = setTimeout(() => t.remove(), 5200);
+}
+const dbMsg = e => e?.code === "quota_exceeded" ? "Storage is full. Delete old entries to make room."
+  : e?.code === "invalid_argument" ? "Only the owner can change this." : "That did not save (" + (e?.code || "error") + "). Try again.";
+
+/* ============================================================ DATA ACCESS */
+/* When was the data last changed? The newest of: the pipeline build, an owner
+   reading, a note. Shown in the top bar, the hero and the footer. */
+function parseStamp(s) {
+  if (!s) return null;
+  const iso = /^\d{4}-\d{2}-\d{2}$/.test(s) ? s + "T00:00:00Z" : /Z|[+-]\d\d:?\d\d$/.test(s) ? s : s.replace(" ", "T") + "Z";
+  const d = new Date(iso); return isNaN(d) ? null : d;
+}
+function lastUpdated() {
+  const stamps = [S.data?.built_at, ...Object.values(S.series).map(s => s.updatedAt), ...S.notes.map(n => n.createdAt)].map(parseStamp).filter(Boolean);
+  return stamps.length ? new Date(Math.max(...stamps)) : null;
+}
+function ago(d) {
+  if (!d) return "—";
+  const m = Math.round((Date.now() - d) / 60000);
+  if (m < 1) return "just now";
+  if (m < 60) return m + (m === 1 ? " minute ago" : " minutes ago");
+  const hrs = Math.round(m / 60); if (hrs < 24) return hrs + (hrs === 1 ? " hour ago" : " hours ago");
+  const days = Math.round(hrs / 24); return days + (days === 1 ? " day ago" : " days ago");
+}
+const fullStamp = d => d ? d.toLocaleString("en-GB", {day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit", timeZoneName: "short"}) : "—";
+function updatedNode(prefix) {
+  return h("span", {"data-ago": "1", "data-prefix": prefix || "", title: fullStamp(lastUpdated())}, (prefix || "") + ago(lastUpdated()));
+}
+setInterval(() => document.querySelectorAll("[data-ago]").forEach(el => {
+  const d = lastUpdated(); el.textContent = (el.dataset.prefix || "") + ago(d); el.title = fullStamp(d);
+}), 60000);
+
+function companies() {
+  const base = (S.data?.companies || []).map(c => ({...c, hasFin: c.hasFin ?? !!S.data?.quarters?.[c.id]?.length}));
+  const ids = new Set(base.map(c => c.id));
+  const extra = S.dbCompanies.filter(c => !ids.has(c.id)).map(c => ({...c, hasFin: false}));
+  return [...base, ...extra];
+}
+const company = id => companies().find(c => c.id === id);
+const quarters = id => S.data?.quarters?.[id] || [];
+function latestQ(id) { const q = quarters(id); for (let i = q.length - 1; i >= 0; i--) if (isNum(q[i].rev_yoy)) return q[i]; return q.at(-1); }
+const autoAvailable = sid => !!S.data?.signals?.[sid];
+const applies = (sig, c) => !sig.applies || !c?.hasFin || sig.applies.includes(c.id);
+/* Owner readings come from two places: files in the GitHub repository (S.data.series)
+   and, on claude.ai, the live database (S.series). Same date: the database wins. */
+function allSeries() {
+  const out = {};
+  for (const src of [S.data?.series || {}, S.series]) for (const [k, s] of Object.entries(src)) {
+    const prev = out[k]?.points || [], byDate = new Map(prev.map(p => [p.d, p]));
+    (s.points || []).forEach(p => byDate.set(p.d, p));
+    out[k] = {...s, points: [...byDate.values()]};
+  }
+  return out;
+}
+function seriesPoints(cid, sid) {
+  const pts = allSeries()[cid + "__" + sid]?.points || [];
+  return [...pts].filter(p => p && p.d && isNum(p.v)).sort((a, b) => a.d.localeCompare(b.d));
+}
+const allNotes = () => [...(S.data?.notes || []), ...S.notes];
+/* One reading per (company, signal): value, change, sparkline values, status. */
+function reading(cid, sig) {
+  if (sig.mode === "auto" && autoAvailable(sig.id)) {
+    const q = latestQ(cid), rows = quarters(cid);
+    const v = q?.sig?.[sig.id]?.yoy;
+    if (isNum(v)) return {status: "auto", value: pctLog(v), valueNote: "vs same quarter last year",
+      change: q.sig[sig.id].accel, changeLabel: pts(q.sig[sig.id].accel) + " vs last quarter", good: v,
+      spark: rows.slice(-16).map(r => r.sig?.[sig.id]?.yoy), when: "quarter ending " + dateLabel(q.end)};
+  }
+  const p = seriesPoints(cid, sig.id);
+  if (!p.length) return {status: "none"};
+  const last = p.at(-1), prev = p.at(-2);
+  const t = Date.parse(last.d) - 365 * 864e5;
+  const yr = p.filter(x => Math.abs(Date.parse(x.d) - t) < 50 * 864e5).at(0);
+  const rel = (a, b) => isNum(a) && isNum(b) && b !== 0 ? (a - b) / Math.abs(b) : null;
+  const chg = prev ? rel(last.v, prev.v) : null, yoy = yr ? rel(last.v, yr.v) : null;
+  const sign = sig.better === "lower" ? -1 : 1;
+  return {status: "manual", value: fmtVal(last.v), valueNote: sig.unit,
+    change: isNum(chg) ? chg * sign : null,
+    changeLabel: (isNum(chg) ? pctRaw(chg) + " vs previous reading" : "first reading") + (isNum(yoy) ? " · " + pctRaw(yoy) + " vs a year ago" : ""),
+    good: isNum(chg) ? chg * sign : null,
+    spark: p.slice(-24).map(x => x.v * sign), when: dateLabel(last.d), note: last.n};
+}
+function signalsWithData(cid) { const c = company(cid); return SIGNALS.filter(s => applies(s, c) && reading(cid, s).status !== "none"); }
+
+async function loadDataset(assetId, force) {
+  if (!force && S.loadedAsset === assetId && S.data) return;
+  const url = assetId ? "/_blob/" + assetId : "site_data.json";
+  try {
+    const r = await fetch(url, {cache: "no-store"});
+    if (!r.ok) throw new Error("HTTP " + r.status);
+    const d = await r.json();
+    if (d.format !== "signal-engine/1" || !d.quarters || !d.companies) throw new Error("not a Signal Engine data file");
+    const changed = !S.data || d.built_at !== S.data.built_at || assetId !== S.loadedAsset;
+    S.data = d; S.loadedAsset = assetId; S.dataError = null; S.lastChecked = new Date();
+    const autos = Object.keys(d.signals || {});
+    for (const k of ["boardSignal", "coSignal", "scSignal"]) if (!autos.includes(S[k])) S[k] = autos[0];
+    if (!changed && force) { renderChrome(); return; }
+  } catch (e) {
+    if (assetId) { S.dataError = "The uploaded data file could not be loaded (" + e.message + "). Showing the built-in data."; return loadDataset(null); }
+    S.dataError = "Research data could not be loaded.";
+  }
+  mount();
+}
+function checkNow() { loadDataset(S.dataset?.assetId || null, true); }
+setInterval(checkNow, CHECK_EVERY_MS);
+document.addEventListener("visibilitychange", () => {
+  if (!document.hidden && S.lastChecked && Date.now() - S.lastChecked > CHECK_EVERY_MS) checkNow();
+});
+
+/* ================================================================= ROUTING */
+const VIEWS = ["markets", "signals", "scorecard", "method", "console"];
+function route() {
+  const x = (location.hash || "").slice(1).toLowerCase();
+  if (x.startsWith("company-")) return {view: "company", id: x.slice(8).toUpperCase()};
+  return VIEWS.includes(x) ? {view: x} : {view: "markets"};
+}
+window.addEventListener("hashchange", () => { mount(); window.scrollTo({top: 0}); });
+const refresh = () => route().view === "console" ? (renderChrome(), fill()) : mount();
+
+/* ================================================================== CHROME */
+function renderChrome() {
+  const r = route();
+  const links = [["markets", "Markets"], ["signals", "Signals"], ["scorecard", "Scorecard"], ["method", "Method"]];
+  if (ownerView()) links.push(["console", "Owner console"]);
+  document.getElementById("nav").replaceChildren(...links.map(([k, t]) =>
+    h("a", {href: "#" + k, "aria-current": (r.view === k || (k === "markets" && r.view === "company")) ? "page" : null}, t)));
+
+  const chips = [];
+  const lu = lastUpdated(), stale = lu && Date.now() - lu > 8 * 864e5;
+  chips.push(h("span", {class: "chip " + (stale ? "stale" : "live"),
+      title: "Data last updated " + fullStamp(lu) + ". This page checks for new data every 30 minutes (last check " + timeLabel(S.lastChecked) + ")."},
+    h("span", {class: "dot"}), updatedNode("Updated ")));
+  const nm = S.me?.name;
+  if (S.isOwner && S.preview) chips.push(h("button", {class: "chip owner", style: "cursor:pointer", type: "button", onclick: () => { S.preview = false; mount(); }}, "Visitor preview · exit"));
+  else if (S.isOwner) chips.push(h("span", {class: "chip owner"}, "Owner" + (nm ? " · " + nm : "")));
+  else if (S.me?.id) chips.push(h("span", {class: "chip"}, "Signed in" + (nm ? " · " + nm : "")));
+  document.getElementById("status").replaceChildren(...chips);
+  renderTape();
+  const fd = document.getElementById("foot-data");
+  if (S.data) fd.replaceChildren((S.data.mode === "live" ? "Live data" : "Synthetic test data") + " · last updated " + fullStamp(lastUpdated()) + " · checked " + timeLabel(S.lastChecked));
+}
+function renderTape() {
+  const tape = document.getElementById("tape");
+  if (!S.data) { tape.replaceChildren(); return; }
+  const items = companies().map(c => {
+    const q = latestQ(c.id), sigs = signalsWithData(c.id).slice(0, 2);
+    if (!q && !sigs.length) return null;
+    return h("span", {class: "tick"}, h("b", {}, c.id),
+      q ? [h("span", {}, "Revenue"), h("em", {class: dir(q.rev_yoy)}, arrow(q.rev_yoy) + pctLog(q.rev_yoy))] : null,
+      sigs.map(s => { const r = reading(c.id, s); return [h("span", {}, s.name), h("em", {class: dir(r.good)}, arrow(r.good) + (r.status === "auto" ? r.value : r.changeLabel.split(" vs")[0]))]; }));
+  }).filter(Boolean);
+  const run = h("div", {class: "tape-run"}, items, items.map(n => { const c = n.cloneNode(true); c.setAttribute("aria-hidden", "true"); return c; }));
+  tape.replaceChildren(h("div", {class: "tape-inner"}, h("div", {class: "tape-label"}, "Latest change"), h("div", {class: "tape-track"}, run)));
+}
+
+/* =================================================================== VIEWS */
+function mount() {
+  renderChrome();
+  const app = document.getElementById("app");
+  if (!S.data) { app.replaceChildren(S.dataError ? h("div", {class: "panel"}, S.dataError) : h("div", {class: "skeleton"})); return; }
+  let r = route();
+  if (r.view === "console" && !ownerView()) r = {view: "markets"};
+  if (r.view === "company" && !company(r.id)) r = {view: "markets"};
+  const parts = [];
+  if (S.dataError) parts.push(h("div", {class: "banner"}, h("b", {}, "Data"), S.dataError));
+  if (S.data.mode !== "live") parts.push(h("div", {class: "banner", role: "note"}, h("b", {}, "Test data"),
+    h("span", {}, "Revenue figures and the two automatic signals are synthetic for now. They prove the method works; real company data replaces them after the first data run. Readings the owner adds by hand are real.")));
+  const view = {markets: viewMarkets, signals: viewSignals, company: () => viewCompany(r.id), scorecard: viewScorecard, method: viewMethod, console: viewConsole}[r.view]();
+  app.replaceChildren(...parts, view);
+  fill();
+}
+function fill() {
+  document.querySelectorAll("[data-slot]").forEach(el => { const f = SLOTS[el.dataset.slot]; if (f) el.replaceChildren(...[f(el.dataset.arg)].flat()); });
+}
+const SLOTS = {
+  notes: n => notesList(+n || 3),
+  record: () => trackRecord(),
+  forecasts: () => forecastList(),
+  dataset: () => datasetStatus(),
+  seriesTable: () => seriesTable(),
+  companyList: () => companyList(),
+};
+
+/* ----- Markets */
+function viewMarkets() {
+  const cs = companies();
+  const manualPoints = Object.values(allSeries()).reduce((a, s) => a + (s.points?.length || 0), 0);
+  const withData = new Set(); cs.forEach(c => signalsWithData(c.id).forEach(s => withData.add(s.id)));
+  const hero = h("section", {class: "hero"},
+    h("div", {class: "stack"},
+      h("div", {class: "eyebrow"}, "Alternative investment research · " + cs.length + " companies · " + SIGNALS.length + " signals"),
+      h("h1", {}, "Read a company from the outside, before its results come out."),
+      h("p", {class: "lede"}, "Financial statements arrive months late. This terminal tracks what is happening around each company right now (hiring, app usage, web traffic, pricing, expansion, public attention) and tests which of those signals actually tell an investor where revenue is heading."),
+      h("div", {class: "updated-line"}, h("span", {class: "chip " + (lastUpdated() && Date.now() - lastUpdated() > 8 * 864e5 ? "stale" : "live")}, h("span", {class: "dot"}), "Data"),
+        h("b", {}, updatedNode("Last updated ")), h("span", {}, "· " + fullStamp(lastUpdated())))),
+    h("div", {class: "kpis"},
+      kpi("Companies tracked", cs.length, "and growing"),
+      kpi("Alternative signals", SIGNALS.length, "in " + CATS.length + " categories"),
+      kpi("Signals with data", withData.size, "of " + SIGNALS.length),
+      kpi("Readings recorded", manualPoints, "added by the owner")));
+  return h("div", {}, hero,
+    h("section", {class: "section"},
+      h("div", {class: "section-head"},
+        h("div", {class: "stack", style: "gap:4px"}, h("div", {class: "eyebrow"}, "Market board"), h("h2", {}, "Latest signal readings by company")),
+        h("a", {class: "btn small", href: "#signals"}, "What each signal means")),
+      h("div", {class: "board"}, cs.map(companyCard))),
+    h("section", {class: "section panel stack"},
+      h("div", {class: "section-head"}, h("h2", {}, "Research desk"), h("span", {class: "muted small"}, "Updates from the owner")),
+      h("div", {"data-slot": "notes", "data-arg": "4"})));
+}
+function kpi(k, v, s) { return h("div", {class: "kpi"}, h("span", {class: "k"}, k), h("span", {class: "v"}, String(v)), h("span", {class: "s"}, s)); }
+function companyCard(c) {
+  const q = latestQ(c.id), sigs = signalsWithData(c.id);
+  const total = SIGNALS.filter(s => applies(s, c)).length;
+  const show = sigs.slice(0, 4);
+  return h("a", {class: "card", href: "#company-" + c.id.toLowerCase()},
+    h("div", {class: "card-top"},
+      h("div", {}, h("div", {class: "tkr"}, c.id), h("div", {class: "card-name"}, c.name + " · " + c.sector)),
+      q ? h("div", {style: "text-align:right"}, h("div", {class: "big " + dir(q.rev_yoy)}, pctLog(q.rev_yoy)), h("div", {class: "muted small"}, "revenue, YoY")) : null),
+    h("div", {class: "readings"},
+      show.length ? show.map(s => { const r = reading(c.id, s);
+        return [h("span", {class: "lbl"}, s.name), h("span", {class: "num " + dir(r.good)}, arrow(r.good) + r.value)]; })
+      : h("span", {class: "lbl", style: "grid-column:1/-1"}, "No signal readings yet")),
+    h("div", {class: "muted small"}, sigs.length + " of " + total + " signals have data"));
+}
+
+/* ----- Signals catalog */
+function viewSignals() {
+  const cs = companies();
+  return h("div", {},
+    h("div", {class: "stack"},
+      h("div", {class: "eyebrow"}, "Signal library"),
+      h("h1", {}, "Fifteen ways to see a company before its numbers do"),
+      h("p", {class: "lede"}, "Each signal is a piece of public evidence about how a business is doing. None of them comes from the company's financial statements. Below: what each one measures, what it suggests to an investor, and where the data comes from.")),
+    CATS.map(cat => h("section", {class: "section cat-block catalog"},
+      h("div", {class: "cat-head"}, h("h2", {}, cat)),
+      h("div", {class: "sig-grid"}, SIGNALS.filter(s => s.cat === cat).map(s => {
+        const covered = cs.filter(c => applies(s, c) && reading(c.id, s).status !== "none").length;
+        const relevant = cs.filter(c => applies(s, c)).length;
+        return h("article", {class: "sig"},
+          h("div", {class: "sig-top"}, h("span", {class: "cat"}, s.cat), modeBadge(s)),
+          h("h3", {}, s.name),
+          h("p", {class: "small"}, s.measures),
+          h("p", {class: "sig-why"}, s.indicates),
+          h("div", {class: "read-guide"},
+            h("div", {}, h("span", {class: "up"}, "▲ "), s.up), h("div", {}, h("span", {class: "down"}, "▼ "), s.down)),
+          h("dl", {class: "dl"},
+            h("dt", {}, "Timing"), h("dd", {}, s.lead),
+            h("dt", {}, "Free source"), h("dd", {}, s.free),
+            h("dt", {}, "Paid sources"), h("dd", {}, s.paid),
+            h("dt", {}, "Coverage"), h("dd", {}, covered + " of " + relevant + " relevant companies have data")));
+      })))));
+}
+function modeBadge(s) {
+  return s.mode === "auto" ? h("span", {class: "badge auto"}, "Collected automatically") : h("span", {class: "badge owner"}, "Researched by the owner");
+}
+
+/* ----- Company */
+function viewCompany(id) {
+  const c = company(id), q = latestQ(id), rows = quarters(id);
+  const sigs = SIGNALS.filter(s => applies(s, c));
+  const have = sigs.filter(s => reading(id, s).status !== "none");
+  const ups = have.filter(s => reading(id, s).good > 0).length, downs = have.filter(s => reading(id, s).good < 0).length;
+
+  const sigCard = s => {
+    const r = reading(id, s);
+    const body = r.status === "none"
+      ? h("div", {class: "sig-wait"}, "No readings yet. Source: " + s.free + ".")
+      : [h("div", {class: "sig-read"},
+          h("div", {}, h("div", {class: "val " + (r.status === "auto" ? dir(r.good) : "")}, r.value),
+            h("div", {class: "muted small"}, r.valueNote), h("div", {class: "chg " + dir(r.good)}, arrow(r.good) + r.changeLabel)),
+          h("div", {svg: sparkSVG(r.spark, r.status === "auto" ? 0 : null), style: "line-height:0;flex:1;display:flex;justify-content:flex-end"})),
+         h("div", {class: "sig-src"}, "Latest: " + r.when + (r.note ? " · " + r.note : ""))];
+    return h("article", {class: "sig" + (r.status === "none" ? " empty-sig" : "")},
+      h("div", {class: "sig-top"}, h("span", {class: "cat"}, s.cat), modeBadge(s)),
+      h("h3", {}, s.name),
+      h("p", {class: "sig-why"}, s.indicates),
+      body,
+      ownerView() && s.mode === "manual" ? addReadingInline(id, s) : null);
+  };
+
+  const finSection = c.hasFin && rows.length ? (() => {
+    const autos = Object.keys(S.data.signals || {});
+    const seg = h("div", {class: "seg", role: "group", "aria-label": "Signal on the chart"},
+      autos.map(s => h("button", {type: "button", "aria-pressed": String(S.coSignal === s), onclick: () => { S.coSignal = s; mount(); }}, SIG[s]?.name || s)));
+    const pairs = rows.map(r => [r.sig?.[S.coSignal]?.yoy, r.rev_yoy]).filter(([a, b]) => isNum(a) && isNum(b) && a !== 0 && b !== 0);
+    const hits = pairs.filter(([a, b]) => Math.sign(a) === Math.sign(b)).length;
+    const box = h("div", {class: "chart-box"}); drawLineChart(box, rows, S.coSignal, c);
+    return [
+      h("section", {class: "section"},
+        h("div", {class: "stack", style: "gap:4px"}, h("div", {class: "eyebrow"}, "Financial performance"), h("h2", {}, "What actually happened to revenue")),
+        h("div", {class: "tiles"},
+          h("div", {class: "tile"}, h("span", {class: "k"}, "Revenue, latest quarter"), h("span", {class: "v"}, money(q?.rev, c.currency)), h("span", {class: "d muted"}, "quarter ending " + dateLabel(q?.end))),
+          h("div", {class: "tile"}, h("span", {class: "k"}, "Revenue growth vs a year ago"), h("span", {class: "v " + dir(q?.rev_yoy)}, pctLog(q?.rev_yoy)), h("span", {class: "d " + dir(q?.rev_accel)}, pts(q?.rev_accel) + " vs last quarter's growth")))),
+      h("section", {class: "section panel"},
+        h("div", {class: "section-head"}, h("h2", {}, "Does the signal move with revenue?"), seg),
+        h("div", {class: "legend"}, h("span", {}, h("i", {style: "background:var(--fg)"}), "Revenue, change vs a year ago"),
+          h("span", {}, h("i", {style: "background:var(--accent)"}), (SIG[S.coSignal]?.name || S.coSignal) + ", change vs a year ago"),
+          h("span", {}, h("i", {style: "background:color-mix(in srgb,var(--info) 30%,transparent);height:10px"}), "Test period (data the model never saw)")),
+        box,
+        pairs.length >= 8 ? h("p", {class: "callout"}, `In ${hits} of ${pairs.length} quarters (${Math.round(hits / pairs.length * 100)}%), ${(SIG[S.coSignal]?.name || "the signal").toLowerCase()} and revenue moved in the same direction compared with a year earlier.`) : null),
+      h("section", {class: "section"},
+        h("h2", {}, "Recent quarters"),
+        h("div", {class: "tbl-wrap"}, h("table", {},
+          h("thead", {}, h("tr", {}, h("th", {}, "Quarter ending"), h("th", {class: "n"}, "Revenue"), h("th", {class: "n"}, "Revenue vs year ago"),
+            autos.map(s => h("th", {class: "n"}, (SIG[s]?.name || s) + " vs year ago")))),
+          h("tbody", {}, rows.slice(-12).reverse().map(r => h("tr", {}, h("td", {class: "mono"}, r.end), h("td", {class: "n"}, money(r.rev, c.currency)),
+            h("td", {class: "n " + dir(r.rev_yoy)}, pctLog(r.rev_yoy)), autos.map(s => h("td", {class: "n " + dir(r.sig?.[s]?.yoy)}, pctLog(r.sig?.[s]?.yoy)))))))))];
+  })() : h("section", {class: "section panel"}, h("h2", {}, "Financial performance"),
+      h("p", {class: "muted"}, ownerView() ? "Revenue for this company is not in the data pipeline yet. Ask Claude to add it to the pipeline's company list, then upload the next data file." : "Revenue data for this company has not been loaded yet."));
+
+  return h("div", {},
+    h("a", {href: "#markets", class: "btn small", style: "margin-bottom:18px"}, "← Market board"),
+    h("div", {class: "co-head"},
+      h("div", {class: "stack", style: "gap:6px"},
+        h("div", {class: "co-tkr"}, c.id + " · " + (c.sector || "").toUpperCase()),
+        h("h1", {}, c.name),
+        h("p", {class: "muted"}, "Main customer: " + (c.customer || "—").toLowerCase() + (c.currency && c.currency !== "USD" ? " · reports in " + c.currency : "")))),
+    h("section", {class: "section"},
+      h("div", {class: "section-head"},
+        h("div", {class: "stack", style: "gap:4px"}, h("div", {class: "eyebrow"}, "Alternative signals"), h("h2", {}, "What's happening around " + c.name)),
+        h("div", {class: "summary-row"},
+          h("span", {class: "pill neutral"}, have.length + " of " + sigs.length + " signals have data"),
+          ups ? h("span", {class: "pill good"}, "▲ " + ups + " improving") : null,
+          downs ? h("span", {class: "pill bad"}, "▼ " + downs + " weakening") : null)),
+      CATS.filter(cat => sigs.some(s => s.cat === cat)).map(cat => h("div", {class: "cat-block"},
+        h("div", {class: "cat-head"}, h("span", {class: "eyebrow"}, cat)),
+        h("div", {class: "sig-grid"}, sigs.filter(s => s.cat === cat).map(sigCard))))),
+    finSection);
+}
+function addReadingInline(cid, s) {
+  const form = h("form", {},
+    h("label", {class: "f"}, "Date", h("input", {type: "date", required: true, value: new Date().toISOString().slice(0, 10)})),
+    h("label", {class: "f"}, "Value (" + s.unit + ")", h("input", {type: "number", step: "any", required: true})),
+    h("label", {class: "f full"}, "Source or note", h("input", {type: "text", maxlength: "160", placeholder: s.free})),
+    h("div", {class: "full"}, h("button", {class: "btn primary small", type: "submit"}, "Save reading")));
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    const [d, v, n] = [...form.querySelectorAll("input")].map(i => i.value);
+    await addPoints(cid, s.id, [{d, v: Number(v), n: n.trim()}]);
+  });
+  return h("details", {class: "add"}, h("summary", {}, "+ Add a reading"), form);
+}
+function sparkSVG(vals, baseline) {
+  const W = 260, H = 56, P = 4;
+  const nums = vals.filter(isNum);
+  if (nums.length < 2) return "";
+  const all = baseline === 0 ? [...nums, 0] : nums;
+  let lo = Math.min(...all), hi = Math.max(...all); if (hi - lo < 1e-9) { hi += 1; lo -= 1; }
+  const x = i => P + i * (W - 2 * P) / Math.max(vals.length - 1, 1), y = v => P + (hi - v) * (H - 2 * P) / (hi - lo);
+  let d = "", pen = false, lastI = -1;
+  vals.forEach((v, i) => { if (!isNum(v)) { pen = false; return; } d += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); pen = true; lastI = i; });
+  return `<svg class="spark" viewBox="0 0 ${W} ${H}" role="img" aria-label="Trend">${baseline === 0 ? `<line x1="${P}" x2="${W - P}" y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}" stroke="var(--line)" stroke-dasharray="3 3"/>` : ""}
+    <path d="${d}" fill="none" stroke="var(--accent)" stroke-width="2"/><circle cx="${x(lastI).toFixed(1)}" cy="${y(vals[lastI]).toFixed(1)}" r="3" fill="var(--accent)"/></svg>`;
+}
+function niceTicks(min, max, count) {
+  if (min === max) { min -= 1; max += 1; }
+  const raw = (max - min) / count, mag = 10 ** Math.floor(Math.log10(raw)), e = raw / mag;
+  const step = (e >= 7.5 ? 10 : e >= 3.5 ? 5 : e >= 1.5 ? 2 : 1) * mag;
+  const out = []; for (let v = Math.floor(min / step) * step; v <= Math.ceil(max / step) * step + step / 2; v += step) out.push(+v.toFixed(10));
+  return out;
+}
+function drawLineChart(box, rows, sig, c) {
+  const W = 900, H = 330, L = 52, R = 16, T = 14, B = 34;
+  const A = rows.map(r => isNum(r.rev_yoy) ? (Math.exp(r.rev_yoy) - 1) * 100 : null);
+  const Bv = rows.map(r => { const v = r.sig?.[sig]?.yoy; return isNum(v) ? (Math.exp(v) - 1) * 100 : null; });
+  const vals = [...A, ...Bv, 0].filter(isNum);
+  if (vals.length < 4 || rows.length < 2) { box.append(h("p", {class: "muted"}, "Not enough data to chart.")); return; }
+  const ticks = niceTicks(Math.min(...vals), Math.max(...vals), 5), lo = ticks[0], hi = ticks.at(-1);
+  const x = i => L + i * (W - L - R) / (rows.length - 1), y = v => T + (hi - v) * (H - T - B) / (hi - lo);
+  const path = arr => { let d = "", pen = false; arr.forEach((v, i) => { if (!isNum(v)) { pen = false; return; } d += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1); pen = true; }); return d; };
+  const oos = rows.findIndex(r => r.end >= (S.data.out_of_sample_start || "9999"));
+  let svg = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(c.name)}: revenue and ${esc(SIG[sig]?.name || sig)} change versus a year earlier, by quarter">`;
+  if (oos > 0) svg += `<rect x="${x(oos).toFixed(1)}" y="${T}" width="${(W - R - x(oos)).toFixed(1)}" height="${H - T - B}" fill="var(--info)" fill-opacity="0.09"/>
+    <text x="${(x(oos) + 8).toFixed(1)}" y="${T + 14}" font-size="11" font-family="var(--mono)" fill="var(--info)">TEST PERIOD</text>`;
+  ticks.forEach(t => { svg += `<line x1="${L}" x2="${W - R}" y1="${y(t).toFixed(1)}" y2="${y(t).toFixed(1)}" stroke="var(--line)" ${t === 0 ? "" : 'stroke-dasharray="2 4"'}/>
+      <text x="${L - 8}" y="${(y(t) + 4).toFixed(1)}" text-anchor="end" font-size="11" font-family="var(--mono)" fill="var(--muted)">${t > 0 ? "+" : ""}${t}%</text>`; });
+  let lastYear = null;
+  rows.forEach((r, i) => { const yr = r.end.slice(0, 4);
+    if (yr !== lastYear && +yr % 2 === 0) svg += `<line x1="${x(i).toFixed(1)}" x2="${x(i).toFixed(1)}" y1="${H - B}" y2="${H - B + 5}" stroke="var(--faint)"/><text x="${x(i).toFixed(1)}" y="${H - B + 19}" text-anchor="middle" font-size="11" font-family="var(--mono)" fill="var(--muted)">${yr}</text>`;
+    lastYear = yr; });
+  svg += `<path d="${path(Bv)}" fill="none" stroke="var(--accent)" stroke-width="2"/><path d="${path(A)}" fill="none" stroke="var(--fg)" stroke-width="2.2"/>
+    <line id="hl" x1="0" x2="0" y1="${T}" y2="${H - B}" stroke="var(--faint)" visibility="hidden"/>
+    <circle id="ha" r="4" fill="var(--fg)" visibility="hidden"/><circle id="hb" r="4" fill="var(--accent)" visibility="hidden"/>
+    <rect id="hz" x="${L}" y="${T}" width="${W - L - R}" height="${H - T - B}" fill="transparent"/></svg>`;
+  box.innerHTML = svg;
+  const el = box.querySelector("svg"), tip = h("div", {class: "tip", hidden: true}); box.append(tip);
+  const dot = (k, cx, v) => { const n = el.querySelector(k); if (isNum(v)) { n.setAttribute("cx", cx); n.setAttribute("cy", y(v)); n.setAttribute("visibility", "visible"); } else n.setAttribute("visibility", "hidden"); };
+  el.querySelector("#hz").addEventListener("pointermove", ev => {
+    const bb = el.getBoundingClientRect(), sx = (ev.clientX - bb.left) * W / bb.width;
+    const i = Math.max(0, Math.min(rows.length - 1, Math.round((sx - L) / ((W - L - R) / (rows.length - 1))))), cx = x(i);
+    const ln = el.querySelector("#hl"); ln.setAttribute("x1", cx); ln.setAttribute("x2", cx); ln.setAttribute("visibility", "visible");
+    dot("#ha", cx, A[i]); dot("#hb", cx, Bv[i]);
+    tip.replaceChildren(h("div", {class: "muted"}, "Quarter ending " + rows[i].end),
+      h("div", {}, "Revenue ", h("b", {class: dir(A[i])}, isNum(A[i]) ? fmtSigned(A[i], 1) + "%" : "—")),
+      h("div", {}, (SIG[sig]?.name || sig) + " ", h("b", {class: dir(Bv[i])}, isNum(Bv[i]) ? fmtSigned(Bv[i], 1) + "%" : "—")));
+    tip.hidden = false;
+    const px = cx * bb.width / W; tip.style.left = Math.max(0, px > bb.width * .6 ? px - tip.offsetWidth - 14 : px + 14) + "px"; tip.style.top = "10px";
+  });
+  el.querySelector("#hz").addEventListener("pointerleave", () => { tip.hidden = true; ["#hl", "#ha", "#hb"].forEach(k => el.querySelector(k).setAttribute("visibility", "hidden")); });
+}
+
+/* ----- Scorecard */
+function viewScorecard() {
+  const card = S.data.scorecard || [];
+  const main = sid => card.find(r => r.signal === sid && r.measure === "yoy" && r.horizon === 0);
+  const nextQ = sid => card.find(r => r.signal === sid && r.measure === "yoy" && r.horizon === 1);
+  const chance = p => !isNum(p) ? "—" : p < 0.001 ? "under 0.1%" : (p * 100 < 10 ? (p * 100).toFixed(1) : Math.round(p * 100)) + "%";
+  const manualCount = sid => Object.values(allSeries()).filter(s => s.signal === sid).reduce((a, s) => a + (s.points?.length || 0), 0);
+  const tested = SIGNALS.filter(s => main(s.id));
+  const autos = tested.map(s => s.id);
+  const seg = h("div", {class: "seg", role: "group", "aria-label": "Signal in the company chart"},
+    autos.map(s => h("button", {type: "button", "aria-pressed": String(S.scSignal === s), onclick: () => { S.scSignal = s; mount(); }}, SIG[s].name)));
+  return h("div", {},
+    h("div", {class: "stack"},
+      h("div", {class: "eyebrow"}, "Scorecard"),
+      h("h1", {}, "How well does each signal track revenue?"),
+      h("p", {class: "lede"}, "A signal earns its place only if it tells you something about revenue that you could not already guess. These tests measure that for every signal with enough history.")),
+    h("section", {class: "section"},
+      h("h2", {}, "How to read it"),
+      h("div", {class: "howto"},
+        h("div", {class: "panel"}, h("b", {}, "Moves with revenue"), h("p", {class: "small muted"}, "From −1 to +1. Above 0 means that when the signal grows faster than usual for a company, its revenue usually does too. 0 means no connection.")),
+        h("div", {class: "panel"}, h("b", {}, "Points the right way"), h("p", {class: "small muted"}, "How often the signal and revenue moved in the same direction compared with a year earlier. 50% is what a coin flip would score.")),
+        h("div", {class: "panel"}, h("b", {}, "Works on new data"), h("p", {class: "small muted"}, "The link is learned from older quarters, then tested on recent quarters it never saw. Above 0 means it predicted better than ignoring the signal.")),
+        h("div", {class: "panel"}, h("b", {}, "Chance it's luck"), h("p", {class: "small muted"}, "How likely a link this strong would appear by pure chance, after correcting for testing many signals. Lower is more convincing.")))),
+    h("section", {class: "section"},
+      h("h2", {}, "All " + SIGNALS.length + " signals"),
+      h("div", {class: "tbl-wrap"}, h("table", {},
+        h("thead", {}, h("tr", {}, h("th", {}, "Signal"), h("th", {}, "Category"), h("th", {}, "Status"),
+          ["Moves with revenue", "Points the right way", "Works on new data", "Chance it's luck", "Next quarter: works on new data"].map(t => h("th", {class: "n"}, t)))),
+        h("tbody", {}, SIGNALS.map(s => {
+          const r = main(s.id), r1 = nextQ(s.id);
+          if (r) return h("tr", {}, h("td", {}, h("b", {}, s.name)), h("td", {class: "muted"}, s.cat),
+            h("td", {}, h("span", {class: "pill info"}, "Tested · " + r.n + " quarters")),
+            h("td", {class: "n " + dir(r.corr_within)}, f2(r.corr_within)), h("td", {class: "n"}, pct0(r.hit_rate)),
+            h("td", {class: "n " + dir(r.oos_r2)}, f2(r.oos_r2)), h("td", {class: "n"}, chance(r.p_adjusted)),
+            h("td", {class: "n " + dir(r1?.oos_r2)}, f2(r1?.oos_r2)));
+          const n = manualCount(s.id);
+          return h("tr", {}, h("td", {}, h("b", {}, s.name)), h("td", {class: "muted"}, s.cat),
+            h("td", {}, h("span", {class: "pill neutral"}, n ? "Collecting · " + n + " readings" : "Collecting data")),
+            h("td", {class: "wrap-cell muted small", colspan: "5"}, "Tested once about two years of readings exist for several companies. Source: " + s.free + "."));
+        })))),
+      h("p", {class: "muted small"}, "All tests compare each quarter with the same quarter a year earlier, which removes seasonal effects such as the holiday quarter. The signal for a quarter is complete before the company reports it, so a link here is a genuine early read.")),
+    autos.length ? h("section", {class: "section panel"},
+      h("div", {class: "section-head"},
+        h("div", {class: "stack", style: "gap:4px"}, h("h2", {}, "Company by company"), h("p", {class: "muted small"}, "Does the signal move with this company's revenue? +1 always together, 0 no connection, −1 opposite.")),
+        seg),
+      h("div", {svg: barsSVG(S.scSignal), style: "overflow-x:auto"}),
+      h("div", {class: "legend"},
+        h("span", {}, h("i", {style: "background:var(--accent);height:10px"}), "Sells mainly to consumers"),
+        h("span", {}, h("i", {style: "background:var(--info);height:10px"}), "Sells mainly to businesses"),
+        h("span", {}, h("i", {style: "background:var(--faint);height:10px"}), "Mixed"))) : null,
+    h("section", {class: "section"},
+      h("details", {class: "adv panel"}, h("summary", {}, "Full statistical detail"),
+        h("div", {class: "tbl-wrap", style: "margin-top:12px"}, h("table", {},
+          h("thead", {}, h("tr", {}, ["Signal", "Measure", "Timing"].map(t => h("th", {}, t)), ["Quarters", "Correlation", "Adjusted p", "Same direction", "Out-of-sample R²"].map(t => h("th", {class: "n"}, t)))),
+          h("tbody", {}, card.map(r => h("tr", {}, h("td", {}, SIG[r.signal]?.name || r.signal),
+            h("td", {}, r.measure === "yoy" ? "Growth vs year ago" : "Change in growth"), h("td", {}, r.horizon === 0 ? "Same quarter" : "Next quarter"),
+            h("td", {class: "n"}, r.n), h("td", {class: "n"}, f2(r.corr_within)), h("td", {class: "n"}, isNum(r.p_adjusted) ? r.p_adjusted.toFixed(3) : "—"),
+            h("td", {class: "n"}, pct0(r.hit_rate)), h("td", {class: "n"}, f2(r.oos_r2))))))))));
+}
+function barsSVG(sig) {
+  const b = (S.data.breakdown || []).filter(r => r.signal === sig && isNum(r.spearman)).sort((p, q) => q.spearman - p.spearman);
+  if (!b.length) return `<p class="muted">No per-company results for this signal yet.</p>`;
+  const W = 820, rowH = 30, T = 26, H = T + b.length * rowH + 8, L = 150, R = 60, mid = L + (W - L - R) / 2, half = (W - L - R) / 2;
+  const col = cu => cu === "Consumer" ? "var(--accent)" : cu === "Business" ? "var(--info)" : "var(--faint)";
+  let s = `<svg viewBox="0 0 ${W} ${H}" style="width:100%;min-width:520px;height:auto;display:block" role="img" aria-label="Per-company result for ${esc(SIG[sig]?.name || sig)}">`;
+  [-1, -.5, 0, .5, 1].forEach(t => { const xx = mid + t * half;
+    s += `<line x1="${xx}" x2="${xx}" y1="${T - 6}" y2="${H - 6}" stroke="var(--line)" ${t === 0 ? "" : 'stroke-dasharray="2 4"'}/><text x="${xx}" y="${T - 12}" text-anchor="middle" font-size="11" font-family="var(--mono)" fill="var(--muted)">${t > 0 ? "+" : ""}${t}</text>`; });
+  b.forEach((r, i) => {
+    const c = company(r.company_id) || {name: r.company_id, customer: ""};
+    const yy = T + i * rowH + 4, w = Math.abs(r.spearman) * half, x0 = r.spearman >= 0 ? mid : mid - w;
+    s += `<text x="${L - 12}" y="${yy + 15}" text-anchor="end" font-size="13" fill="var(--fg)">${esc(c.name)}</text>
+      <rect x="${x0.toFixed(1)}" y="${yy + 3}" width="${Math.max(w, 1.5).toFixed(1)}" height="${rowH - 12}" rx="3" fill="${col(c.customer)}"/>
+      <text x="${(r.spearman >= 0 ? mid + w + 6 : mid - w - 6).toFixed(1)}" y="${yy + 15}" text-anchor="${r.spearman >= 0 ? "start" : "end"}" font-size="11.5" font-family="var(--mono)" fill="var(--muted)">${fmtSigned(r.spearman, 2)}</text>`;
+  });
+  return s + "</svg>";
+}
+
+/* ----- Method */
+function viewMethod() {
+  return h("div", {},
+    h("div", {class: "stack"},
+      h("div", {class: "eyebrow"}, "Method"),
+      h("h1", {}, "How the numbers are made"),
+      h("p", {class: "lede"}, "The aim is to find out whether these signals work, including the possibility that some do not. Every choice below exists to stop the analysis from fooling itself.")),
+    h("section", {class: "section two"},
+      h("div", {class: "panel"}, h("ol", {class: "steps"},
+        h("li", {}, h("b", {}, "Revenue as first reported. "), "Quarterly revenue comes from SEC filings. Companies sometimes revise old numbers; the first published figure is kept, because that is what investors knew at the time. Adidas files in Germany, so its figures come from its own reports."),
+        h("li", {}, h("b", {}, "Each company's own calendar. "), "Nike's year ends in May and Microsoft's in June. Signals are matched to each company's own fiscal quarters."),
+        h("li", {}, h("b", {}, "Compared with a year ago. "), "Each quarter is compared with the same quarter a year earlier, which removes seasonal effects such as the holiday quarter."),
+        h("li", {}, h("b", {}, "No hindsight. "), "A quarter's signal is complete on its last day. Companies report weeks later, so a same-quarter link is a genuine early read."),
+        h("li", {}, h("b", {}, "Honest significance. "), "A permutation test keeps each signal's slow-moving pattern. On test data, an ordinary test called a pure-noise signal significant (p = 0.002); this one correctly did not."),
+        h("li", {}, h("b", {}, "Many tests, one correction. "), "Benjamini–Hochberg adjustment stops one lucky result among many signals from looking real."),
+        h("li", {}, h("b", {}, "Tested on unseen data. "), "Links are learned from quarters before " + (S.data.out_of_sample_start || "2022").slice(0, 4) + " and scored on later quarters against a baseline with no signal."),
+        h("li", {}, h("b", {}, "Hand-collected signals. "), "Readings the owner records (job openings, app ranks, prices and so on) carry their date and source, and join the tests once about two years of history exist."))),
+      h("div", {class: "stack"},
+        h("div", {class: "panel stack"}, h("h3", {}, "Limitations"),
+          h("p", {class: "small"}, "Ten large companies to start. Attention is not the same as buying. Google Trends rescales each search term from 0 to 100. Correlation is not causation. The most powerful alternative data, such as card spending and phone location data, is expensive and only partly available here.")),
+        h("div", {class: "panel stack"}, h("h3", {}, "How this site stays current"),
+          h("p", {class: "small"}, "The data pipeline runs automatically every day and whenever the owner adds a reading, a note or a company. This page checks for new data every 30 minutes. Most signals change monthly and revenue quarterly, so many days bring no change."),
+          h("div", {"data-slot": "dataset"})))));
+}
+function datasetStatus() {
+  const d = S.data, ds = S.dataset;
+  return h("dl", {class: "kv"},
+    h("dt", {}, "Research data"), h("dd", {}, d.mode === "live" ? "Real company data" : "Synthetic test data"),
+    h("dt", {}, "Last updated"), h("dd", {}, fullStamp(lastUpdated())),
+    h("dt", {}, "Pipeline run"), h("dd", {}, fullStamp(parseStamp(d.built_at))),
+    ds?.uploadedAt ? [h("dt", {}, "Owner upload"), h("dd", {}, dateLabel(ds.uploadedAt))] : null,
+    h("dt", {}, "Last checked"), h("dd", {}, timeLabel(S.lastChecked)));
+}
+
+/* ----- Notes */
+function notesList(n) {
+  if (S.db && !S.notesReady && !S.data?.notes?.length) return h("p", {class: "muted"}, "Loading notes…");
+  const list = allNotes().sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || "")).slice(0, n);
+  if (!list.length) return h("p", {class: "muted"}, ownerView() ? "No notes yet. Post your first update from the Owner console." : "No research notes posted yet.");
+  return list.map(x => h("article", {class: "note"}, h("div", {class: "meta"}, dateLabel(x.createdAt)), h("h3", {}, x.title || "Update"), h("p", {}, x.body || ""),
+    ownerView() && x.id ? h("div", {}, confirmButton("Delete note", "Confirm delete", async () => { try { await S.db.doc("notes/" + x.id).delete(); toast("Note deleted."); } catch (e) { toast(dbMsg(e), true); } })) : null));
+}
+function confirmButton(label, confirmLabel, action) {
+  const b = h("button", {class: "btn small danger", type: "button"}, label);
+  let armed = false, t;
+  b.addEventListener("click", () => { if (!armed) { armed = true; b.textContent = confirmLabel; t = setTimeout(() => { armed = false; b.textContent = label; }, 4000); return; } clearTimeout(t); action(); });
+  return b;
+}
+
+/* ============================================================ OWNER CONSOLE */
+function viewConsole() {
+  const cs = companies();
+  /* 1. signal data */
+  const dataForm = h("form", {class: "grid", id: "sd-form"},
+    h("label", {class: "f"}, "Company", h("select", {id: "sd-company", onchange: fill}, cs.map(c => h("option", {value: c.id}, c.name + " (" + c.id + ")")))),
+    h("label", {class: "f"}, "Signal", h("select", {id: "sd-signal", onchange: () => { updateUnit(); fill(); }}, CATS.map(cat => h("optgroup", {label: cat}, SIGNALS.filter(s => s.cat === cat && s.mode === "manual").map(s => h("option", {value: s.id}, s.name)))))),
+    h("label", {class: "f"}, "Date of reading", h("input", {type: "date", id: "sd-date", required: true, value: new Date().toISOString().slice(0, 10)})),
+    h("label", {class: "f"}, h("span", {id: "sd-unit"}, "Value"), h("input", {type: "number", id: "sd-value", step: "any", required: true})),
+    h("label", {class: "f full"}, "Source or note (shown to visitors)", h("input", {type: "text", id: "sd-note", maxlength: "160", placeholder: "e.g. careers.nike.com, 28 Oct"})),
+    h("div", {class: "full", style: "display:flex;gap:10px;flex-wrap:wrap;align-items:center"}, h("button", {class: "btn primary", type: "submit"}, "Save reading"), h("span", {class: "muted small", id: "sd-hint"})));
+  const updateUnit = () => { const s = SIG[dataForm.querySelector("#sd-signal").value]; dataForm.querySelector("#sd-unit").textContent = "Value (" + s.unit + ")"; dataForm.querySelector("#sd-hint").textContent = "Where to find it: " + s.free + "."; };
+  dataForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    const q = k => dataForm.querySelector(k).value;
+    const ok = await addPoints(q("#sd-company"), q("#sd-signal"), [{d: q("#sd-date"), v: Number(q("#sd-value")), n: q("#sd-note").trim()}]);
+    if (ok) dataForm.querySelector("#sd-value").value = "";
+  });
+  const bulk = h("textarea", {id: "sd-bulk", placeholder: "2026-07-01, 1420\n2026-08-01, 1385\n2026-09-01, 1510", style: "min-height:110px;font-family:var(--mono)"});
+  const bulkBtn = h("button", {class: "btn", type: "button", onclick: async () => {
+    const lines = bulk.value.split(/\n+/).map(l => l.trim()).filter(Boolean), pts = [], bad = [];
+    lines.forEach(l => { const m = l.match(/^(\d{4}-\d{2}(?:-\d{2})?)\s*[,;\t ]\s*(-?[\d.,]+)\s*(?:[,;\t]\s*(.*))?$/);
+      if (!m) { bad.push(l); return; } const d = m[1].length === 7 ? m[1] + "-01" : m[1]; const v = Number(m[2].replace(/,/g, ""));
+      isNum(v) ? pts.push({d, v, n: (m[3] || "").trim()}) : bad.push(l); });
+    if (bad.length) return toast("Could not read: " + bad.slice(0, 2).join(" | ") + ". Use one 'date, value' per line.", true);
+    if (!pts.length) return toast("Paste at least one line like 2026-09-01, 1510.", true);
+    if (await addPoints(dataForm.querySelector("#sd-company").value, dataForm.querySelector("#sd-signal").value, pts)) bulk.value = "";
+  }}, "Add all lines");
+  queueMicrotask(updateUnit);
+
+  /* 2. company */
+  const coForm = h("form", {class: "grid", id: "co-form"},
+    h("label", {class: "f"}, "Ticker", h("input", {type: "text", id: "co-id", required: true, maxlength: "10", placeholder: "e.g. LULU"})),
+    h("label", {class: "f"}, "Company name", h("input", {type: "text", id: "co-name", required: true, maxlength: "60", placeholder: "e.g. Lululemon"})),
+    h("label", {class: "f"}, "Sector", h("input", {type: "text", id: "co-sector", maxlength: "40", placeholder: "e.g. Consumer apparel"})),
+    h("label", {class: "f"}, "Main customer", h("select", {id: "co-customer"}, ["Consumer", "Business", "Mixed"].map(x => h("option", {value: x}, x)))),
+    h("div", {class: "full"}, h("button", {class: "btn primary", type: "submit"}, "Add company")));
+  coForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    const id = coForm.querySelector("#co-id").value.trim().toUpperCase();
+    if (!/^[A-Z0-9.]{1,10}$/.test(id)) return toast("Ticker: letters, digits and dots only, up to 10.", true);
+    if (company(id)) return toast(id + " is already on the board.", true);
+    try {
+      await S.db.doc("companies/" + id).set({id, name: coForm.querySelector("#co-name").value.trim(), sector: coForm.querySelector("#co-sector").value.trim() || "Other",
+        customer: coForm.querySelector("#co-customer").value, currency: "USD", addedAt: new Date().toISOString()});
+      coForm.reset(); toast(id + " added to the market board.");
+    } catch (err) { toast(dbMsg(err), true); }
+  });
+
+  /* 3. research data file */
+  const fileIn = h("input", {type: "file", id: "ds-file", accept: ".json,application/json", hidden: true});
+  fileIn.addEventListener("change", () => fileIn.files[0] && publishDataset(fileIn.files[0]));
+  const drop = h("div", {class: "drop"}, h("b", {}, "Publish a new research data file"),
+    h("p", {class: "muted small", style: "max-width:52ch"}, "Upload site_data.json from the data pipeline. Every visitor switches to the new data at their next check."),
+    h("button", {class: "btn", type: "button", onclick: () => fileIn.click(), disabled: !S.assets}, "Choose file"), fileIn);
+  ["dragover", "dragenter"].forEach(t => drop.addEventListener(t, e => { e.preventDefault(); drop.classList.add("over"); }));
+  ["dragleave", "drop"].forEach(t => drop.addEventListener(t, () => drop.classList.remove("over")));
+  drop.addEventListener("drop", e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) publishDataset(f); });
+
+  /* 4. notes */
+  const noteForm = h("form", {class: "grid", id: "note-form"},
+    h("label", {class: "f full"}, "Title", h("input", {type: "text", id: "note-title", required: true, maxlength: "120", placeholder: "e.g. Nike hiring is slowing"})),
+    h("label", {class: "f full"}, "Note", h("textarea", {id: "note-body", required: true, maxlength: "3000", placeholder: "What you found, and what it might mean for the company."})),
+    h("div", {class: "full"}, h("button", {class: "btn primary", type: "submit"}, "Post note")));
+  noteForm.addEventListener("submit", async e => {
+    e.preventDefault();
+    try { await S.db.collection("notes").add({title: noteForm.querySelector("#note-title").value.trim(), body: noteForm.querySelector("#note-body").value.trim(), createdAt: new Date().toISOString()});
+      noteForm.reset(); toast("Note posted to the Research desk."); } catch (err) { toast(dbMsg(err), true); }
+  });
+
+  if (!S.db) return h("div", {class: "panel"}, "The Owner console needs this page open on claude.ai, signed in as the owner.");
+  return h("div", {},
+    h("div", {class: "stack"},
+      h("div", {class: "eyebrow"}, "Owner console · only you see this"),
+      h("h1", {}, "Run the research desk"),
+      h("p", {class: "lede"}, "Everything you save here is public the moment you save it, except your private predictions."),
+      h("div", {class: "console-tabs"},
+        h("a", {class: "btn small", href: "#console-data", onclick: e => { e.preventDefault(); document.getElementById("c-data").scrollIntoView({behavior: "smooth"}); }}, "Signal data"),
+        h("a", {class: "btn small", href: "#console-co", onclick: e => { e.preventDefault(); document.getElementById("c-co").scrollIntoView({behavior: "smooth"}); }}, "Companies"),
+        h("a", {class: "btn small", href: "#console-pred", onclick: e => { e.preventDefault(); document.getElementById("c-pred").scrollIntoView({behavior: "smooth"}); }}, "Predictions"),
+        h("button", {class: "btn small", type: "button", onclick: () => { S.preview = true; location.hash = "#markets"; mount(); }}, "Preview as visitor"))),
+    h("section", {class: "section two", id: "c-data"},
+      h("div", {class: "panel stack"},
+        h("div", {class: "stack", style: "gap:4px"}, h("h2", {}, "Add signal data"), h("p", {class: "muted small"}, "Record a reading you looked up, such as Nike's open jobs this month. Readings appear on the company page straight away.")),
+        dataForm,
+        h("details", {class: "adv"}, h("summary", {}, "Paste many readings at once"),
+          h("div", {class: "stack", style: "margin-top:10px"}, h("p", {class: "muted small"}, "One reading per line: date, value, optional note. Uses the company and signal selected above."), bulk, h("div", {}, bulkBtn)))),
+      h("div", {class: "panel stack"}, h("h3", {}, "Readings saved for this pair"), h("div", {"data-slot": "seriesTable"}))),
+    h("section", {class: "section two", id: "c-co"},
+      h("div", {class: "panel stack"}, h("h2", {}, "Add a company"), coForm),
+      h("div", {class: "panel stack"}, h("h3", {}, "Companies on the board"), h("div", {"data-slot": "companyList"}))),
+    h("section", {class: "section two", id: "c-pred"},
+      h("div", {class: "panel stack"},
+        h("div", {class: "stack", style: "gap:4px"}, h("h2", {}, "Private predictions"),
+          h("p", {class: "muted small"}, "Before a company reports, write down what you think the signals say: will revenue growth speed up or slow down? After results come out, mark it right or wrong. Only you see this; it shows whether your reading of the signals works.")),
+        predictionForm(),
+        h("div", {"data-slot": "record"}),
+        h("div", {class: "panel", style: "padding:0", "data-slot": "forecasts"})),
+      h("div", {class: "stack"},
+        h("div", {class: "panel stack"}, h("h3", {}, "Post a research note"), noteForm),
+        h("div", {class: "panel stack"}, h("h3", {}, "Research data"), h("div", {"data-slot": "dataset"}), drop,
+          S.dataset?.assetId ? confirmButton("Go back to built-in test data", "Confirm: switch to test data", revertDataset) : null),
+        h("div", {class: "panel stack"}, h("h3", {}, "Accounts and sharing"),
+          h("p", {class: "small muted"}, "Visitors sign in with a free claude.ai account, which they create with their email. Share the page with Viewer access from the Share menu; viewers can read everything and change nothing. Only you can use this console.")))));
+}
+async function addPoints(cid, sid, newPts) {
+  if (!S.db) { toast("Open the page on claude.ai as the owner to save data.", true); return false; }
+  const bad = newPts.find(p => !/^\d{4}-\d{2}-\d{2}$/.test(p.d) || !isNum(p.v));
+  if (bad) { toast("Each reading needs a date and a number.", true); return false; }
+  const key = cid + "__" + sid, cur = S.series[key]?.points || [];
+  const byDate = new Map(cur.map(p => [p.d, p])); newPts.forEach(p => byDate.set(p.d, p));
+  const points = [...byDate.values()].sort((a, b) => a.d.localeCompare(b.d));
+  if (points.length > 2000) { toast("This series is full (2,000 readings).", true); return false; }
+  try { await S.db.doc("series/" + key).set({company: cid, signal: sid, points, updatedAt: new Date().toISOString()});
+    toast(newPts.length + (newPts.length === 1 ? " reading" : " readings") + " saved for " + (company(cid)?.name || cid) + " · " + SIG[sid].name + ".");
+    return true; } catch (e) { toast(dbMsg(e), true); return false; }
+}
+async function removePoint(cid, sid, d) {
+  const key = cid + "__" + sid, points = (S.series[key]?.points || []).filter(p => p.d !== d);
+  try { points.length ? await S.db.doc("series/" + key).set({company: cid, signal: sid, points, updatedAt: new Date().toISOString()}) : await S.db.doc("series/" + key).delete(); toast("Reading removed."); }
+  catch (e) { toast(dbMsg(e), true); }
+}
+function seriesTable() {
+  const cid = document.getElementById("sd-company")?.value, sid = document.getElementById("sd-signal")?.value;
+  if (!cid || !sid) return [];
+  if (!S.seriesReady) return h("p", {class: "muted"}, "Loading…");
+  const p = seriesPoints(cid, sid).reverse();
+  if (!p.length) return h("p", {class: "muted small"}, "No readings yet for " + (company(cid)?.name || cid) + " · " + SIG[sid].name + ".");
+  return h("div", {class: "tbl-wrap", style: "max-height:360px;overflow:auto"}, h("table", {},
+    h("thead", {}, h("tr", {}, h("th", {}, "Date"), h("th", {class: "n"}, "Value"), h("th", {}, "Note"), h("th", {}, ""))),
+    h("tbody", {}, p.map(x => h("tr", {}, h("td", {class: "mono"}, x.d), h("td", {class: "n"}, fmtVal(x.v)), h("td", {class: "small muted", style: "white-space:normal"}, x.n || ""),
+      h("td", {}, confirmButton("Remove", "Confirm", () => removePoint(cid, sid, x.d))))))));
+}
+function companyList() {
+  return h("div", {class: "stack", style: "gap:6px"}, companies().map(c => h("div", {style: "display:flex;justify-content:space-between;gap:10px;align-items:center;font-size:14px"},
+    h("span", {}, h("b", {class: "mono"}, c.id), " " + c.name),
+    c.hasFin ? h("span", {class: "muted small"}, "in data pipeline") : confirmButton("Remove", "Confirm remove", async () => { try { await S.db.doc("companies/" + c.id).delete(); toast(c.id + " removed."); } catch (e) { toast(dbMsg(e), true); } }))));
+}
+
+/* ----- private predictions (stored under a path only the owner can read) */
+function predictionForm() {
+  const form = h("form", {class: "grid", id: "fc-form"},
+    h("label", {class: "f"}, "Company", h("select", {id: "fc-company"}, companies().map(c => h("option", {value: c.id}, c.name)))),
+    h("label", {class: "f"}, "Quarter", h("input", {type: "text", id: "fc-quarter", required: true, maxlength: "40", placeholder: "e.g. Oct–Dec 2026"})),
+    h("div", {class: "f full"}, h("div", {class: "radio-row", role: "radiogroup", "aria-label": "Your call"},
+      h("label", {}, h("input", {type: "radio", name: "fc-call", id: "fc-up", value: "accelerate", checked: true}), h("span", {}, "▲ Growth speeds up")),
+      h("label", {}, h("input", {type: "radio", name: "fc-call", id: "fc-down", value: "decelerate"}), h("span", {}, "▼ Growth slows down")))),
+    h("label", {class: "f"}, "Company reports on", h("input", {type: "date", id: "fc-date"})),
+    h("label", {class: "f"}, "Main reason", h("input", {type: "text", id: "fc-why", maxlength: "300", placeholder: "e.g. job openings up 20%"})),
+    h("div", {class: "full"}, h("button", {class: "btn primary", type: "submit"}, "Save prediction")));
+  form.addEventListener("submit", async e => {
+    e.preventDefault();
+    try { await S.db.collection("forecasts").add({company: form.querySelector("#fc-company").value, quarter: form.querySelector("#fc-quarter").value.trim(),
+      call: form.querySelector("input[name=fc-call]:checked").value, reportDate: form.querySelector("#fc-date").value || null,
+      rationale: form.querySelector("#fc-why").value.trim(), outcome: "pending", createdAt: new Date().toISOString(), gradedAt: null});
+      form.querySelector("#fc-quarter").value = ""; form.querySelector("#fc-why").value = ""; toast("Prediction saved privately.");
+    } catch (err) { toast(dbMsg(err), true); }
+  });
+  return form;
+}
+function trackRecord() {
+  const f = S.forecasts, g = f.filter(x => x.outcome !== "pending"), hits = g.filter(x => x.outcome === "hit").length;
+  return h("div", {class: "record"}, kpi("Saved", f.length, "predictions"), kpi("Right", hits, "of " + g.length + " checked"),
+    kpi("Wrong", g.length - hits, ""), kpi("Waiting", f.length - g.length, "for results"));
+}
+function forecastList() {
+  if (!S.fcReady) return h("div", {class: "empty"}, "Loading…");
+  const list = [...S.forecasts].sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
+  if (!list.length) return h("div", {class: "empty"}, "No predictions yet.");
+  return list.map(f => h("div", {class: "fc"},
+    h("div", {class: "tkr"}, f.company),
+    h("div", {class: "stack", style: "gap:4px;min-width:0"},
+      h("div", {}, h("b", {}, (f.quarter || "") + " · "), f.call === "accelerate" ? "▲ growth speeds up" : "▼ growth slows down"),
+      f.rationale ? h("div", {class: "why"}, f.rationale) : null,
+      h("div", {class: "meta"}, "Saved " + dateLabel(f.createdAt) + (f.reportDate ? " · reports " + dateLabel(f.reportDate) : ""))),
+    h("div", {class: "fc-side"},
+      f.outcome === "hit" ? h("span", {class: "pill good"}, "Right") : f.outcome === "miss" ? h("span", {class: "pill bad"}, "Wrong") : h("span", {class: "pill neutral"}, "Waiting"),
+      h("div", {class: "actions"},
+        f.outcome === "pending" ? [h("button", {class: "btn small", type: "button", onclick: () => grade(f, "hit")}, "Right"), h("button", {class: "btn small", type: "button", onclick: () => grade(f, "miss")}, "Wrong")]
+          : h("button", {class: "btn small", type: "button", onclick: () => grade(f, "pending")}, "Undo"),
+        confirmButton("Delete", "Confirm", async () => { try { await S.db.doc("forecasts/" + f.id).delete(); } catch (e) { toast(dbMsg(e), true); } })))));
+}
+async function grade(f, outcome) {
+  try { await S.db.doc("forecasts/" + f.id).update({outcome, gradedAt: outcome === "pending" ? null : new Date().toISOString()}); } catch (e) { toast(dbMsg(e), true); }
+}
+async function publishDataset(file) {
+  if (!S.assets || !S.db) return toast("Uploading is only available to the owner on claude.ai.", true);
+  let text, d;
+  try { text = await file.text(); d = JSON.parse(text); } catch { return toast("That file is not valid JSON. Upload data/site_data.json from the pipeline.", true); }
+  if (d.format !== "signal-engine/1" || !d.quarters || !d.companies) return toast("That is not a Signal Engine data file. Upload data/site_data.json from the pipeline.", true);
+  toast("Uploading " + file.name + "…");
+  try {
+    const res = await S.assets.upload(new Blob([text], {type: "application/json"}), {type: "application/json"});
+    await S.db.doc("site/dataset").set({assetId: res.id, mode: d.mode || "unknown", builtAt: d.built_at || null, uploadedAt: new Date().toISOString(), source: "manual"});
+    toast("Published. Visitors now see " + (d.mode === "live" ? "real" : "test") + " data built " + (d.built_at || "recently") + ".");
+  } catch (e) { toast(e?.code === "too_large" ? "File is too large (limit 20 MB)." : "Upload failed (" + (e?.code || "error") + "). Try again.", true); }
+}
+async function revertDataset() {
+  try { await S.db.doc("site/dataset").set({assetId: null, mode: "demo", builtAt: null, uploadedAt: new Date().toISOString(), source: "manual"}); toast("Switched back to built-in test data."); }
+  catch (e) { toast(dbMsg(e), true); }
+}
+
+/* ============================================================ CAPABILITIES */
+async function connect() {
+  const C = window.claude;
+  if (!C || typeof C.use !== "function") return;
+  const user = await C.use("user");
+  if (user) { S.isOwner = await user.isOwner(); S.me = await user.me(); renderChrome(); if (S.isOwner) mount(); }
+  const db = await C.use("db");
+  if (db) {
+    S.db = db;
+    db.doc("site/dataset").onSnapshot(snap => {
+      S.live = true; S.dataset = snap.exists ? snap.data() : null;
+      const id = S.dataset?.assetId || null;
+      if (id !== (S.loadedAsset ?? null)) loadDataset(id); else { renderChrome(); fill(); }
+    }, () => { S.live = false; renderChrome(); });
+    db.collection("series").onSnapshot(qs => {
+      S.series = Object.fromEntries(qs.docs.map(d => [d.id, d.data()])); S.seriesReady = true; refresh();
+    }, () => { S.seriesReady = true; });
+    db.collection("companies").onSnapshot(qs => { S.dbCompanies = qs.docs.map(d => d.data()).filter(c => c?.id); refresh(); }, () => {});
+    db.collection("notes").onSnapshot(qs => { S.notes = qs.docs.map(d => ({id: d.id, ...d.data()})); S.notesReady = true; fill(); }, () => { S.notesReady = true; fill(); });
+    if (S.isOwner) db.collection("forecasts").onSnapshot(qs => { S.forecasts = qs.docs.map(d => ({id: d.id, ...d.data()})); S.fcReady = true; fill(); }, () => { S.fcReady = true; fill(); });
+  }
+  if (S.isOwner) S.assets = await C.use("assets");
+  mount();
+}
+
+/* ======================================================= BACKGROUND FIELD */
+(function background() {
+  const cv = document.getElementById("bg"), ctx = cv.getContext("2d");
+  const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  let W = 0, H = 0, cols = {}, offset = 0, candles = [], last = 0, raf;
+  const readColors = () => { const cs = getComputedStyle(document.documentElement); cols = {line: cs.getPropertyValue("--line").trim(), up: cs.getPropertyValue("--up").trim(), down: cs.getPropertyValue("--down").trim(), accent: cs.getPropertyValue("--accent").trim()}; };
+  const next = p => { const o = p, c = p + (H * 0.55 - p) * 0.02 + (Math.random() - 0.5) * 22; return {o, c, hi: Math.min(o, c) - Math.random() * 14, lo: Math.max(o, c) + Math.random() * 14}; };
+  const seed = () => { candles = []; let p = H * 0.55; for (let i = 0; i < Math.ceil(W / 14) + 40; i++) { candles.push(next(p)); p = candles.at(-1).c; } };
+  function size() { const dpr = Math.min(devicePixelRatio || 1, 2); W = innerWidth; H = innerHeight; cv.width = W * dpr; cv.height = H * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); seed(); draw(); }
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.globalAlpha = 0.5; ctx.strokeStyle = cols.line; ctx.lineWidth = 1;
+    for (let gx = 0; gx < W; gx += 64) { ctx.beginPath(); ctx.moveTo(gx + .5, 0); ctx.lineTo(gx + .5, H); ctx.stroke(); }
+    for (let gy = 0; gy < H; gy += 64) { ctx.beginPath(); ctx.moveTo(0, gy + .5); ctx.lineTo(W, gy + .5); ctx.stroke(); }
+    ctx.globalAlpha = 0.16;
+    candles.forEach((k, i) => { const x = i * 14 - offset; if (x < -14 || x > W + 14) return;
+      ctx.strokeStyle = ctx.fillStyle = k.c < k.o ? cols.up : cols.down;
+      ctx.beginPath(); ctx.moveTo(x + 4.5, k.hi); ctx.lineTo(x + 4.5, k.lo); ctx.stroke(); ctx.fillRect(x + 1, Math.min(k.o, k.c), 7, Math.max(Math.abs(k.c - k.o), 1.5)); });
+    ctx.globalAlpha = 0.22; ctx.strokeStyle = cols.accent; ctx.lineWidth = 1.5; ctx.beginPath();
+    let avg = candles[0]?.c || 0;
+    candles.forEach((k, i) => { avg = avg * 0.85 + k.c * 0.15; const x = i * 14 - offset + 4.5; i ? ctx.lineTo(x, avg - 40) : ctx.moveTo(x, avg - 40); });
+    ctx.stroke(); ctx.globalAlpha = 1;
+  }
+  function tick(t) { raf = requestAnimationFrame(tick); if (t - last < 33) return; last = t; offset += 0.35;
+    if (offset >= 14) { offset -= 14; candles.shift(); candles.push(next(candles.at(-1).c)); } draw(); }
+  readColors(); size(); addEventListener("resize", size);
+  const recolor = () => { readColors(); draw(); };
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", recolor);
+  new MutationObserver(recolor).observe(document.documentElement, {attributes: true, attributeFilter: ["data-theme"]});
+  if (!reduce) { raf = requestAnimationFrame(tick); document.addEventListener("visibilitychange", () => { cancelAnimationFrame(raf); if (!document.hidden) raf = requestAnimationFrame(tick); }); }
+})();
+
+/* ==================================================================== BOOT */
+renderChrome();
+loadDataset(null);
+connect();
+</script>

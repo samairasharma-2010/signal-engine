@@ -1,0 +1,6 @@
+# Adidas quarterly revenue (EUR) - fill in from Adidas's quarterly results:
+#   adidas-group.com > Investors > Results & Publications
+# One row per quarter. 'filed' = the date the results were published
+# (used to make sure we never use numbers before investors had them).
+# Example row format: 2024-01-01,2024-03-31,5458000000,2024-04-30
+period_start,period_end,revenue,filed

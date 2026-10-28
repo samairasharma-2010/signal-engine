@@ -1,0 +1,13 @@
+# Extra companies for the website. The 10 starting companies are already built in.
+# Add one line per company below the header. Only id and name are required.
+#   id        ticker, e.g. LULU
+#   name      company name
+#   sector    e.g. Consumer apparel
+#   customer  Consumer, Business or Mixed
+#   cik       SEC company number: revenue is then fetched automatically.
+#             Find it at sec.gov/edgar/searchedgar/companysearch (the number after "CIK").
+#   wiki      English Wikipedia article name, as in its web address, e.g. Lululemon
+#   trends    Google search term, e.g. Lululemon
+# Example (remove the # to use it):
+# LULU,Lululemon,Consumer apparel,Consumer,1397187,Lululemon,Lululemon
+id,name,sector,customer,cik,wiki,trends

@@ -1,0 +1,65 @@
+# Rebuilds and publishes the website:
+#   - every day at 07:07 India time
+#   - whenever you save a change to the repository (new readings, notes, companies)
+#   - when you press "Run workflow" on the Actions tab
+name: Update website
+
+on:
+  schedule:
+    - cron: "37 1 * * *"
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install
+        run: pip install -r requirements.txt
+
+      - name: Collect data and run the analysis
+        env:
+          SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
+        run: |
+          if [ -n "$SEC_USER_AGENT" ]; then
+            python pipeline.py fetch
+          else
+            echo "::warning::No SEC_USER_AGENT secret yet, so the site shows test data. Add it under Settings > Secrets and variables > Actions."
+            python pipeline.py demo
+          fi
+
+      - name: Assemble the website
+        run: python site/build.py
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4
