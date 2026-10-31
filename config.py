@@ -7,9 +7,12 @@ automated request to identify who is making it (name + email).
 
 # --- Who you are (required by the SEC and Wikimedia APIs) -------------------
 import os
+import re
 
 # On GitHub, this comes from the repository secret SEC_USER_AGENT.
-SEC_USER_AGENT = os.environ.get("SEC_USER_AGENT") or "Your Name your.email@example.com"   # <-- change this
+# Line breaks and labels like "Name:" are removed, so a messy secret still works.
+_raw = os.environ.get("SEC_USER_AGENT") or "Your Name your.email@example.com"   # <-- change this
+SEC_USER_AGENT = " ".join(re.sub(r"(?i)\b(name|email(\s*id)?)\s*:", " ", _raw).split())
 
 # --- Time window --------------------------------------------------------------
 # Wikipedia page-view data starts in July 2015, so that is our common start.

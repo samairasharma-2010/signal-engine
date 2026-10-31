@@ -160,12 +160,17 @@ def fetch() -> None:
                 problems.append(f"{cid} {signal}: {e}")
                 print(f"  {signal} FAILED: {e}")
 
-    analyze("live")
-    export("live")
     if problems:
         print("\nThings to fix (the rest of the data was saved):")
         for p in problems:
             print("  -", p)
+    if db.read_table("live", "financials").empty:
+        print("\n::error::No company revenue could be downloaded, so the website was NOT updated. "
+              "Check the SEC_USER_AGENT secret (one line: Your Name your@email.com). Problems: "
+              + " | ".join(problems[:3]))
+        sys.exit(1)
+    analyze("live")
+    export("live")
 
 
 if __name__ == "__main__":
