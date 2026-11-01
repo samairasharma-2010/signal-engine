@@ -157,7 +157,8 @@ def fetch() -> None:
                 rev = quarterly_revenue(facts)
                 try:
                     stores = store_counts(facts)
-                    if len(stores) >= 2:
+                    # Starbucks tags only a small subset of stores, not its total
+                    if len(stores) >= 2 and cid not in ("SBUX",):
                         out = AUTO_DIR / "expansion" / f"{cid}.csv"
                         out.parent.mkdir(parents=True, exist_ok=True)
                         stores.assign(note="SEC filings (10-K/10-Q), total locations").to_csv(
