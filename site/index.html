@@ -269,7 +269,8 @@ ol.steps li::marker{font-family:var(--mono);color:var(--accent)}
 /* ============================================================ SIGNAL CATALOG
    applies: list of company ids the signal is meaningful for (omitted = all).
    mode: "auto" = collected by the data pipeline; "manual" = entered by the owner.
-   better: "lower" when a falling number is good news (e.g. app chart rank). */
+   better: "lower" when a falling number is good news (e.g. app chart rank).
+   diff: true when the value can be negative, so changes are shown in points, not %. */
 const CATS = ["People", "Consumer demand", "Digital engagement", "Brand & attention", "Pricing & expansion", "Innovation"];
 const SIGNALS = [
   {id: "hiring", name: "Job openings", cat: "People", unit: "open roles", mode: "manual",
@@ -302,16 +303,16 @@ const SIGNALS = [
    indicates: "For restaurants and retailers, visits are one of the closest signals to same-store sales.",
    up: "More customers through the door", down: "Fewer visits, weaker sales",
    lead: "Moves with sales in the same quarter", free: "Placer.ai publishes some free monthly reports", paid: "Placer.ai, Advan"},
-  {id: "app_rank", name: "App popularity", cat: "Digital engagement", unit: "chart rank (lower is better)", mode: "manual", better: "lower", applies: ["NKE", "ADS", "NFLX", "AMZN", "TSLA", "MCD", "SBUX"],
+  {id: "app_rank", name: "App popularity", cat: "Digital engagement", unit: "chart rank (lower is better)", mode: "auto", better: "lower", applies: ["NKE", "ADS", "NFLX", "AMZN", "TSLA", "MCD", "SBUX"],
    measures: "Where the company's main app ranks in the App Store and Google Play charts.",
    indicates: "For Starbucks, McDonald's, Nike, Netflix and Amazon, the app is where many orders happen. A climbing rank means more customers using it.",
    up: "Falling rank number: more people using the app", down: "Rising rank number: app losing users",
-   lead: "Can lead revenue by about a quarter", free: "App Store and Google Play top charts; install ranges on Google Play", paid: "Sensor Tower, Appfigures"},
-  {id: "app_rating", name: "App reviews", cat: "Digital engagement", unit: "total reviews", mode: "manual", applies: ["NKE", "ADS", "NFLX", "AMZN", "TSLA", "MCD", "SBUX"],
-   measures: "Total number of App Store reviews for the company's main app.",
-   indicates: "Review counts grow when more people use an app, so growth here is a rough measure of user growth.",
+   lead: "Can lead revenue by about a quarter", free: "Apple's US top-200 free apps chart, collected automatically (recorded only when the app is in the top 200)", paid: "Sensor Tower, Appfigures"},
+  {id: "app_rating", name: "App ratings", cat: "Digital engagement", unit: "total ratings", mode: "auto", applies: ["NKE", "ADS", "NFLX", "AMZN", "TSLA", "MCD", "SBUX"],
+   measures: "Total number of App Store ratings for the company's main app.",
+   indicates: "Rating counts grow when more people use an app, so growth here is a rough measure of user growth.",
    up: "Growing user base", down: "Slowing user growth",
-   lead: "Moves with or slightly ahead of digital sales", free: "App Store and Google Play listings", paid: "Sensor Tower, Appfigures"},
+   lead: "Moves with or slightly ahead of digital sales", free: "Apple App Store listing, collected automatically each month", paid: "Sensor Tower, Appfigures"},
   {id: "web_traffic", name: "Website traffic", cat: "Digital engagement", unit: "monthly visits", mode: "manual",
    measures: "Estimated monthly visits to the company's main website.",
    indicates: "For companies that sell online, visits are close to a direct measure of demand. Rising traffic usually means rising online sales.",
@@ -327,11 +328,11 @@ const SIGNALS = [
    indicates: "Brand momentum, especially with younger customers. Fast follower growth suggests rising cultural relevance; stalling growth can mean losing ground to rivals.",
    up: "Brand gaining momentum", down: "Brand losing relevance",
    lead: "Slow signal; useful over several quarters", free: "Social Blade and the platforms' public counts", paid: "Brandwatch, Sprout Social"},
-  {id: "news_tone", name: "News coverage and tone", cat: "Brand & attention", unit: "average tone, −10 to +10", mode: "manual",
+  {id: "news_tone", name: "News coverage and tone", cat: "Brand & attention", unit: "average tone, −10 to +10", mode: "auto", diff: true,
    measures: "How positive or negative news articles about the company are, across global media.",
    indicates: "Sudden negative coverage can flag recalls, lawsuits or scandals early. Persistently positive coverage often comes with strong products and results.",
    up: "Improving reputation", down: "Reputation risk",
-   lead: "Reacts to events within days", free: "GDELT Project, a free global news database", paid: "RavenPack, Bloomberg sentiment"},
+   lead: "Reacts to events within days", free: "GDELT Project, a free global news database, collected automatically (from 2017)", paid: "RavenPack, Bloomberg sentiment"},
   {id: "pricing", name: "Product prices", cat: "Pricing & expansion", unit: "price in USD", mode: "manual",
    measures: "The price of a flagship product tracked over time, such as the base iPhone, Netflix's Standard plan, a Big Mac or a Tesla Model 3.",
    indicates: "Pricing power. Raising prices without losing customers means strong demand; discounting or price cuts can mean demand is weakening.",
@@ -342,11 +343,11 @@ const SIGNALS = [
    indicates: "More locations mean more capacity to sell. Entering new countries widens the market; closing stores can mean retreat or refocus.",
    up: "Growing footprint", down: "Shrinking footprint",
    lead: "New stores add revenue over the following 1 to 4 quarters", free: "Company reports, store locators and press releases", paid: "Placer.ai, SafeGraph"},
-  {id: "patents", name: "Patents granted", cat: "Innovation", unit: "patents per quarter", mode: "manual", applies: ["AAPL", "MSFT", "TSLA", "NKE", "AMZN"],
+  {id: "patents", name: "Patents granted", cat: "Innovation", unit: "patents per quarter", mode: "auto", applies: ["AAPL", "MSFT", "TSLA", "NKE", "AMZN"],
    measures: "Number of US patents granted to the company.",
    indicates: "A measure of research output. A growing patent pipeline suggests future products; it matters most for technology and car companies.",
    up: "Strong innovation pipeline", down: "Slowing research output",
-   lead: "Very long lead: years rather than quarters", free: "USPTO PatentsView (free)", paid: "PatSnap, IFI Claims"},
+   lead: "Very long lead: years rather than quarters", free: "USPTO PatentsView, collected automatically", paid: "PatSnap, IFI Claims"},
 ];
 const SIG = Object.fromEntries(SIGNALS.map(s => [s.id, s]));
 
@@ -456,7 +457,8 @@ const company = id => companies().find(c => c.id === id);
 const quarters = id => S.data?.quarters?.[id] || [];
 function latestQ(id) { const q = quarters(id); for (let i = q.length - 1; i >= 0; i--) if (isNum(q[i].rev_yoy)) return q[i]; return q.at(-1); }
 const autoAvailable = sid => !!S.data?.signals?.[sid];
-const applies = (sig, c) => !sig.applies || !c?.hasFin || sig.applies.includes(c.id);
+const BASE_IDS = new Set(["NKE", "ADS", "NFLX", "AAPL", "MSFT", "AMZN", "TSLA", "MCD", "SBUX", "KO"]);
+const applies = (sig, c) => !sig.applies || !c || !BASE_IDS.has(c.id) || sig.applies.includes(c.id);
 /* Owner readings come from two places: files in the GitHub repository (S.data.series)
    and, on claude.ai, the live database (S.series). Same date: the database wins. */
 function allSeries() {
@@ -487,12 +489,13 @@ function reading(cid, sig) {
   const last = p.at(-1), prev = p.at(-2);
   const t = Date.parse(last.d) - 365 * 864e5;
   const yr = p.filter(x => Math.abs(Date.parse(x.d) - t) < 50 * 864e5).at(0);
-  const rel = (a, b) => isNum(a) && isNum(b) && b !== 0 ? (a - b) / Math.abs(b) : null;
+  const rel = (a, b) => !isNum(a) || !isNum(b) ? null : sig.diff ? a - b : b !== 0 ? (a - b) / Math.abs(b) : null;
   const chg = prev ? rel(last.v, prev.v) : null, yoy = yr ? rel(last.v, yr.v) : null;
   const sign = sig.better === "lower" ? -1 : 1;
+  const fmtChg = v => sig.diff ? fmtSigned(v, 2) + " pts" : pctRaw(v);
   return {status: "manual", value: fmtVal(last.v), valueNote: sig.unit,
     change: isNum(chg) ? chg * sign : null,
-    changeLabel: (isNum(chg) ? pctRaw(chg) + " vs previous reading" : "first reading") + (isNum(yoy) ? " · " + pctRaw(yoy) + " vs a year ago" : ""),
+    changeLabel: (isNum(chg) ? fmtChg(chg) + " vs previous reading" : "first reading") + (isNum(yoy) ? " · " + fmtChg(yoy) + " vs a year ago" : ""),
     good: isNum(chg) ? chg * sign : null,
     spark: p.slice(-24).map(x => x.v * sign), when: dateLabel(last.d), note: last.n};
 }
@@ -600,7 +603,8 @@ const SLOTS = {
 /* ----- Markets */
 function viewMarkets() {
   const cs = companies();
-  const manualPoints = Object.values(allSeries()).reduce((a, s) => a + (s.points?.length || 0), 0);
+  const countPts = auto => Object.values(allSeries()).filter(s => !!s.auto === auto).reduce((a, s) => a + (s.points?.length || 0), 0);
+  const autoPoints = countPts(true), ownerPoints = countPts(false);
   const withData = new Set(); cs.forEach(c => signalsWithData(c.id).forEach(s => withData.add(s.id)));
   const hero = h("section", {class: "hero"},
     h("div", {class: "stack"},
@@ -613,7 +617,7 @@ function viewMarkets() {
       kpi("Companies tracked", cs.length, "and growing"),
       kpi("Alternative signals", SIGNALS.length, "in " + CATS.length + " categories"),
       kpi("Signals with data", withData.size, "of " + SIGNALS.length),
-      kpi("Readings recorded", manualPoints, "added by the owner")));
+      kpi("Readings recorded", (autoPoints + ownerPoints).toLocaleString("en-US"), autoPoints.toLocaleString("en-US") + " automatic · " + ownerPoints.toLocaleString("en-US") + " by the owner")));
   return h("div", {}, hero,
     h("section", {class: "section"},
       h("div", {class: "section-head"},
@@ -681,7 +685,7 @@ function viewCompany(id) {
   const sigCard = s => {
     const r = reading(id, s);
     const body = r.status === "none"
-      ? h("div", {class: "sig-wait"}, "No readings yet. Source: " + s.free + ".")
+      ? h("div", {class: "sig-wait"}, (s.mode === "auto" ? "No readings yet for " + c.name + ". Source: " : "Not collected yet. Free source: ") + s.free + ".")
       : [h("div", {class: "sig-read"},
           h("div", {}, h("div", {class: "val " + (r.status === "auto" ? dir(r.good) : "")}, r.value),
             h("div", {class: "muted small"}, r.valueNote), h("div", {class: "chg " + dir(r.good)}, arrow(r.good) + r.changeLabel)),

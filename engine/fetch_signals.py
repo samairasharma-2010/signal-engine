@@ -72,16 +72,20 @@ READINGS_DIR = Path(__file__).resolve().parent.parent / "data" / "readings"
 NOTES_FILE = Path(__file__).resolve().parent.parent / "data" / "notes.md"
 
 
-def owner_readings() -> dict:
+AUTO_DIR = Path(__file__).resolve().parent.parent / "data" / "auto"
+
+
+def owner_readings(folder: Path = READINGS_DIR, auto: bool = False) -> dict:
     """Readings the owner records by hand, one CSV per company and signal:
     data/readings/<signal_id>/<TICKER>.csv with columns date,value,note.
     Returns {"TICKER__signal": {"company", "signal", "points": [...]}}.
-    Files whose name starts with '_' are templates and are skipped."""
+    Files whose name starts with '_' are templates and are skipped.
+    With folder=AUTO_DIR, reads the automatically collected readings instead."""
     import csv
     out = {}
-    if not READINGS_DIR.exists():
+    if not folder.exists():
         return out
-    for f in sorted(READINGS_DIR.glob("*/*.csv")):
+    for f in sorted(folder.glob("*/*.csv")):
         if f.name.startswith("_"):
             continue
         sig, cid = f.parent.name, f.stem.upper()
@@ -98,11 +102,11 @@ def owner_readings() -> dict:
                 d = pd.Timestamp(d).strftime("%Y-%m-%d")
                 v = float(v)
             except (ValueError, TypeError):
-                print(f"  skipped unreadable line in {f.relative_to(READINGS_DIR)}: {','.join(row)}")
+                print(f"  skipped unreadable line in {f.relative_to(folder)}: {','.join(row)}")
                 continue
             pts[d] = dict(d=d, v=v, n=",".join(row[2:]).strip())
         if pts:
-            out[f"{cid}__{sig}"] = dict(company=cid, signal=sig,
+            out[f"{cid}__{sig}"] = dict(company=cid, signal=sig, auto=auto,
                                         points=[pts[k] for k in sorted(pts)])
     return out
 

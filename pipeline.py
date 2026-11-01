@@ -5,6 +5,7 @@ Run the whole pipeline from the command line.
     python pipeline.py fetch     # real data from the internet -> data/live.db
     python pipeline.py analyze   # rebuild panel + scorecard for live data
     python pipeline.py export    # write data/site_data.json for the website
+    python pipeline.py extras    # news tone, App Store, patents -> data/auto/
 
 `fetch` and `demo` run `analyze` and `export` automatically at the end.
 On GitHub, the "Update website" workflow runs all of this for you.
@@ -22,7 +23,8 @@ from engine.analysis import company_breakdown, scorecard
 from engine.build_panel import build_panel
 from engine.demo_data import generate
 from engine.fetch_sec import fetch_companyfacts, quarterly_revenue
-from engine.fetch_signals import (google_trends_monthly, manual_revenue,
+from engine.fetch_auto import collect
+from engine.fetch_signals import (AUTO_DIR, google_trends_monthly, manual_revenue,
                                   manual_signal, owner_notes, owner_readings,
                                   wikipedia_monthly)
 
@@ -78,6 +80,32 @@ def export(mode: str) -> None:
                  for s in signals},
         ) for _, r in g.iterrows()]
 
+    # Readings: collected automatically (data/auto/) plus the owner's own
+    # (data/readings/). Same company, signal and date: the owner's file wins.
+    series = owner_readings(AUTO_DIR, auto=True)
+    for k, s in owner_readings().items():
+        if k in series:
+            byd = {p["d"]: p for p in series[k]["points"]}
+            byd.update({p["d"]: p for p in s["points"]})
+            s = {**s, "points": [byd[d] for d in sorted(byd)]}
+        series[k] = s
+
+    # Companies without revenue (e.g. Adidas until its CSV is filled in) are not
+    # in the quarterly panel, so pass their Wikipedia and search data on as
+    # monthly readings instead - the website then still shows them.
+    if mode == "live":
+        sig_m = db.read_table(mode, "signals_monthly")
+        for c in config.COMPANIES:
+            if c["id"] in quarters or sig_m.empty:
+                continue
+            for s, g in sig_m[sig_m["company_id"] == c["id"]].groupby("signal"):
+                g = g.dropna(subset=["value"]).sort_values("month")
+                if len(g):
+                    series[f"{c['id']}__{s}"] = dict(
+                        company=c["id"], signal=s, auto=True,
+                        points=[dict(d=m, v=_num(v, 2), n="monthly, collected automatically")
+                                for m, v in zip(g["month"], g["value"])])
+
     out = dict(
         format="signal-engine/1",
         mode=mode,
@@ -87,7 +115,7 @@ def export(mode: str) -> None:
                     "hasFin": c["id"] in quarters}
                    for c in config.COMPANIES if c.get("base") or mode == "live"],
         signals={s: config.SIGNAL_LABELS.get(s, s) for s in signals},
-        series=owner_readings(),
+        series=series,
         notes=owner_notes(),
         quarters=quarters,
         scorecard=[{k: (_num(v) if isinstance(v, float) else v) for k, v in row.items()}
@@ -98,7 +126,7 @@ def export(mode: str) -> None:
     path = db.DATA_DIR / "site_data.json"
     path.write_text(json.dumps(out, separators=(",", ":")))
     print(f"\nWrote {path} ({path.stat().st_size // 1024} KB, {mode} data, "
-          f"{len(out['series'])} owner reading files, {len(out['notes'])} notes).")
+          f"{len(out['series'])} reading files, {len(out['notes'])} notes).")
 
 
 def run_demo() -> None:
@@ -182,6 +210,12 @@ if __name__ == "__main__":
     elif cmd == "analyze":
         analyze("live")
         export("live")
+    elif cmd == "extras":
+        problems = collect([c["id"] for c in config.COMPANIES], config.START_DATE)
+        if problems:
+            print("\nCould not collect (the files from the last run were kept):")
+            for p in problems:
+                print("  -", p)
     elif cmd == "export":
         export(sys.argv[2] if len(sys.argv) > 2 else "live")
     else:
