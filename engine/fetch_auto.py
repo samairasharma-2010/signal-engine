@@ -15,7 +15,7 @@ so the history keeps growing even for sources that only show today's number.
                  main app (today's number; history builds up from now on)
     app_rank     Apple App Store: rank in the US top-200 free apps chart
                  (only recorded on days the app is in the top 200)
-    patents      USPTO PatentsView: US patents granted per quarter. Needs a free
+    patents      USPTO PatentsView: US patents granted per year. Needs a free
                  API key saved as the PATENTSVIEW_API_KEY repository secret.
 
 A source that fails (rate limit, outage) never stops the website from updating:
@@ -203,9 +203,9 @@ def patents(cid: str, key: str, start: str) -> int:
     if not dates:
         raise RuntimeError("no patents found - check the owner names in PATENT_OWNER")
     s = pd.to_datetime(pd.Series(dates))
-    counts = s.dt.to_period("Q").value_counts().sort_index()
-    counts = counts.iloc[:-1]  # the newest quarter is usually still incomplete
-    pts = {str(p.start_time.date()): (float(n), "USPTO PatentsView, patents granted in the quarter")
+    counts = s.dt.to_period("Y").value_counts().sort_index()
+    counts = counts.iloc[:-1]  # the current year is still incomplete
+    pts = {str(p.start_time.date()): (float(n), "USPTO PatentsView, patents granted in the year")
            for p, n in counts.items()}
     _save("patents", cid, pts)
     return len(pts)
