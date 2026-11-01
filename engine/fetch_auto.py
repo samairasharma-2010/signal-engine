@@ -114,11 +114,11 @@ def _record_today(signal: str, cid: str, value: float, note: str) -> None:
 def _gdelt(query: str, start: str) -> dict:
     params = dict(query=query, mode="timelinetone", format="json", startdatetime=start,
                   enddatetime=datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"))
-    for attempt in range(2):
+    for attempt in range(3):
         r = requests.get("https://api.gdeltproject.org/api/v2/doc/doc",
                          params=params, headers={"User-Agent": UA}, timeout=45)
         if r.status_code == 429 or "limit requests" in r.text[:200].lower():
-            time.sleep(10)
+            time.sleep(30)
             continue
         r.raise_for_status()
         try:
@@ -254,7 +254,7 @@ def collect(company_ids: list[str], start: str) -> list[str]:
         except Exception as e:
             problems.append(f"{cid} news_tone: {e}")
             print(f"  {cid} FAILED: {e}")
-        time.sleep(6)  # GDELT asks for at most one request every 5 seconds
+        time.sleep(15)  # GDELT asks for one request every 5 seconds; in practice it needs more
 
     key = os.environ.get("PATENTSVIEW_API_KEY", "").strip()
     print("\n== Patents (PatentsView)")
