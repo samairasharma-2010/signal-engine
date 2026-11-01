@@ -36,9 +36,10 @@ jobs:
 
       - name: Collect news tone, App Store and patent data
         continue-on-error: true
+        timeout-minutes: 20
         env:
           PATENTSVIEW_API_KEY: ${{ secrets.PATENTSVIEW_API_KEY }}
-        run: python pipeline.py extras
+        run: python -u pipeline.py extras
 
       - name: Save the new readings in the repository
         continue-on-error: true

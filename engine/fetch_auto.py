@@ -111,27 +111,34 @@ def _record_today(signal: str, cid: str, value: float, note: str) -> None:
 
 
 # --- News tone (GDELT) ----------------------------------------------------------
-def news_tone(cid: str) -> int:
-    """Monthly average tone of news coverage, from GDELT's free DOC 2.0 API.
-    Tone runs from about -10 (very negative) to +10 (very positive)."""
-    params = dict(
-        query=f"{NEWS_QUERY[cid]} sourcelang:english",
-        mode="timelinetone", format="json",
-        startdatetime="20170101000000",
-        enddatetime=datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"),
-    )
-    for attempt in range(3):
+def _gdelt(query: str, start: str) -> dict:
+    params = dict(query=query, mode="timelinetone", format="json", startdatetime=start,
+                  enddatetime=datetime.now(timezone.utc).strftime("%Y%m%d%H%M%S"))
+    for attempt in range(2):
         r = requests.get("https://api.gdeltproject.org/api/v2/doc/doc",
-                         params=params, headers={"User-Agent": UA}, timeout=120)
+                         params=params, headers={"User-Agent": UA}, timeout=45)
         if r.status_code == 429 or "limit requests" in r.text[:200].lower():
-            time.sleep(10 * (attempt + 1))
+            time.sleep(10)
             continue
         r.raise_for_status()
-        break
-    try:
-        js = r.json()
-    except ValueError:
-        raise RuntimeError("GDELT replied: " + r.text[:150].strip())
+        try:
+            return r.json()
+        except ValueError:
+            raise RuntimeError("GDELT replied: " + r.text[:150].strip())
+    raise RuntimeError("GDELT rate limit")
+
+
+def news_tone(cid: str) -> int:
+    """Monthly average tone of news coverage, from GDELT's free DOC 2.0 API.
+    Tone runs from about -10 (very negative) to +10 (very positive).
+    The first run asks for the full history (from 2017); after that only the
+    last few months are asked for, which is much faster."""
+    have = _load("news_tone", cid)
+    if len(have) >= 24:
+        start = (pd.Timestamp.now() - pd.DateOffset(months=4)).strftime("%Y%m01000000")
+    else:
+        start = "20170101000000"
+    js = _gdelt(f"{NEWS_QUERY[cid]} sourcelang:english", start)
     data = (js.get("timeline") or [{}])[0].get("data") or []
     if not data:
         raise RuntimeError("GDELT returned no articles")
@@ -206,20 +213,10 @@ def patents(cid: str, key: str, start: str) -> int:
 
 # --- Run everything ----------------------------------------------------------------
 def collect(company_ids: list[str], start: str) -> list[str]:
-    """Collect every automatic signal. Returns a list of problems (never raises)."""
+    """Collect every automatic signal. Returns a list of problems (never raises).
+    The App Store comes first because it is fast and never slows down."""
     problems = []
-
-    print("\n== News tone (GDELT)")
-    for cid in company_ids:
-        if cid not in NEWS_QUERY:
-            continue
-        try:
-            n = news_tone(cid)
-            print(f"  {cid}: {n} months")
-        except Exception as e:
-            problems.append(f"{cid} news_tone: {e}")
-            print(f"  {cid} FAILED: {e}")
-        time.sleep(6)  # GDELT asks for at most one request every 5 seconds
+    news_ids = [c for c in company_ids if c in NEWS_QUERY]
 
     print("\n== App Store")
     try:
@@ -244,6 +241,20 @@ def collect(company_ids: list[str], start: str) -> list[str]:
     except Exception as e:
         problems.append(f"app_rank: {e}")
         print(f"  chart FAILED: {e}")
+
+    print("\n== News tone (GDELT)")
+    deadline = time.time() + 12 * 60   # never hold up the website for long
+    for cid in news_ids:
+        if time.time() > deadline:
+            problems.append(f"{cid} news_tone: out of time, will try again tomorrow")
+            continue
+        try:
+            n = news_tone(cid)
+            print(f"  {cid}: {n} months")
+        except Exception as e:
+            problems.append(f"{cid} news_tone: {e}")
+            print(f"  {cid} FAILED: {e}")
+        time.sleep(6)  # GDELT asks for at most one request every 5 seconds
 
     key = os.environ.get("PATENTSVIEW_API_KEY", "").strip()
     print("\n== Patents (PatentsView)")
