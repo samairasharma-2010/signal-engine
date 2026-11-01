@@ -41,16 +41,6 @@ jobs:
           PATENTSVIEW_API_KEY: ${{ secrets.PATENTSVIEW_API_KEY }}
         run: python -u pipeline.py extras
 
-      - name: Save the new readings in the repository
-        continue-on-error: true
-        run: |
-          git config user.name "signal-engine bot"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data/auto
-          if git diff --cached --quiet; then echo "No new readings."; exit 0; fi
-          git commit -m "Automatic readings $(date -u +%Y-%m-%d)"
-          git pull --rebase --autostash origin main && git push origin HEAD:main
-
       - name: Collect data and run the analysis
         env:
           SEC_USER_AGENT: ${{ secrets.SEC_USER_AGENT }}
@@ -61,6 +51,16 @@ jobs:
             echo "::warning::No SEC_USER_AGENT secret yet, so the site shows test data. Add it under Settings > Secrets and variables > Actions."
             python pipeline.py demo
           fi
+
+      - name: Save the new readings in the repository
+        continue-on-error: true
+        run: |
+          git config user.name "signal-engine bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/auto
+          if git diff --cached --quiet; then echo "No new readings."; exit 0; fi
+          git commit -m "Automatic readings $(date -u +%Y-%m-%d)"
+          git pull --rebase --autostash origin main && git push origin HEAD:main
 
       - name: Assemble the website
         run: python site/build.py

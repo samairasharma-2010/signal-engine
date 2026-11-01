@@ -22,7 +22,7 @@ from engine import db
 from engine.analysis import company_breakdown, scorecard
 from engine.build_panel import build_panel
 from engine.demo_data import generate
-from engine.fetch_sec import fetch_companyfacts, quarterly_revenue
+from engine.fetch_sec import fetch_companyfacts, quarterly_revenue, store_counts
 from engine.fetch_auto import collect
 from engine.fetch_signals import (AUTO_DIR, google_trends_monthly, manual_revenue,
                                   manual_signal, owner_notes, owner_readings,
@@ -153,7 +153,18 @@ def fetch() -> None:
             if c["revenue"] == "none":
                 raise RuntimeError("no SEC number (cik) in data/companies.csv, so no revenue")
             if c["revenue"] == "sec":
-                rev = quarterly_revenue(fetch_companyfacts(c["cik"], ua))
+                facts = fetch_companyfacts(c["cik"], ua)
+                rev = quarterly_revenue(facts)
+                try:
+                    stores = store_counts(facts)
+                    if len(stores) >= 2:
+                        out = AUTO_DIR / "expansion" / f"{cid}.csv"
+                        out.parent.mkdir(parents=True, exist_ok=True)
+                        stores.assign(note="SEC filings (10-K/10-Q), total locations").to_csv(
+                            out, index=False, float_format="%.0f")
+                        print(f"  stores: {len(stores)} readings from SEC filings")
+                except Exception as e:
+                    print(f"  stores FAILED: {e}")
             else:
                 rev = manual_revenue(cid)
                 if rev is None:

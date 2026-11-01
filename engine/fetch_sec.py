@@ -104,3 +104,29 @@ def quarterly_revenue(js: dict) -> pd.DataFrame:
         "filed": pd.to_datetime(out["filed"]).dt.strftime("%Y-%m-%d"),
         "derived": out["derived"].astype(bool),
     })
+
+
+# Store / restaurant counts that companies tag in their filings (no dimensions,
+# so these are company-wide totals). Used for the "Stores and new markets" signal.
+STORE_TAGS = ["NumberOfStores", "NumberOfRestaurants"]
+
+
+def store_counts(js: dict) -> pd.DataFrame:
+    """Return columns: date, value - total stores/restaurants at each reporting
+    date, as first reported. Empty if the company doesn't tag them."""
+    gaap = js.get("facts", {}).get("us-gaap", {})
+    rows = []
+    for tag in STORE_TAGS:
+        for unit in gaap.get(tag, {}).get("units", {}).values():
+            for item in unit:
+                if "start" in item or item.get("form") not in ("10-K", "10-Q"):
+                    continue
+                rows.append(dict(end=item["end"], val=float(item["val"]), filed=item["filed"]))
+    df = pd.DataFrame(rows)
+    if df.empty:
+        return pd.DataFrame(columns=["date", "value"])
+    # earliest filing per date, then the largest number (the total, not a part)
+    df = df.sort_values("filed").drop_duplicates(["end", "val"], keep="first")
+    df = df.sort_values("val").drop_duplicates("end", keep="last").sort_values("end")
+    df = df[df["end"] >= "2015-01-01"]
+    return pd.DataFrame({"date": df["end"], "value": df["val"]})
